@@ -1,0 +1,46 @@
+{
+  "name": "lidfly-codex-plugin-installer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "build:frontend": "vite build",
+    "build:macos": "npm run bundle:plugin && npm run version:check && tauri build --bundles app,dmg --target universal-apple-darwin",
+    "build:windows": "npm run bundle:plugin && npm run version:check && tauri build --bundles nsis --target x86_64-pc-windows-msvc",
+    "bundle:plugin": "node ../scripts/build-plugin-bundle.mjs",
+    "bundle:plugin:verify": "node ../scripts/verify-plugin-bundle.mjs",
+    "check": "npm run bundle:plugin && npm run bundle:plugin:verify && npm run format:check && npm run typecheck && npm run project:verify && npm run version:check && npm run cargo:fmt && npm run cargo:clippy",
+    "cargo:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "cargo:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
+    "dev:frontend": "vite",
+    "format": "prettier --write src tests ../scripts/build-plugin-bundle.mjs ../scripts/check-versions.mjs ../scripts/merge-signing-evidence.mjs ../scripts/prepare-release-handoff.mjs ../scripts/verify-plugin-bundle.mjs ../scripts/verify-project.mjs ../scripts/verify-release-artifacts.mjs ../scripts/write-release-tauri-config.mjs ../scripts/lib ../docs/INSTALLER-ARCHITECTURE.md ../docs/INSTALLER-DEVELOPMENT.md ../docs/INSTALLER-RELEASE.md ../.github/workflows/installer-ci.yml ../.github/workflows/installer-release.yml ../README.md package.json tsconfig.json vite.config.ts",
+    "format:check": "prettier --check src tests ../scripts/build-plugin-bundle.mjs ../scripts/check-versions.mjs ../scripts/merge-signing-evidence.mjs ../scripts/prepare-release-handoff.mjs ../scripts/verify-plugin-bundle.mjs ../scripts/verify-project.mjs ../scripts/verify-release-artifacts.mjs ../scripts/write-release-tauri-config.mjs ../scripts/lib ../docs/INSTALLER-ARCHITECTURE.md ../docs/INSTALLER-DEVELOPMENT.md ../docs/INSTALLER-RELEASE.md ../.github/workflows/installer-ci.yml ../.github/workflows/installer-release.yml ../README.md package.json tsconfig.json vite.config.ts",
+    "project:verify": "node ../scripts/verify-project.mjs",
+    "release:handoff": "node ../scripts/prepare-release-handoff.mjs",
+    "release:verify": "node ../scripts/verify-release-artifacts.mjs",
+    "tauri": "tauri",
+    "tauri:dev": "npm run bundle:plugin && npm run version:check && tauri dev",
+    "test": "npm run bundle:plugin && npm run test:node && npm run test:rust",
+    "test:node": "vitest run",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --all-targets -- --test-threads=1",
+    "typecheck": "tsc --noEmit",
+    "version:check": "node ../scripts/check-versions.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-process": "^2.3.0",
+    "@tauri-apps/plugin-updater": "^2.9.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "@types/node": "^22.15.0",
+    "prettier": "^3.6.0",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=22 <23"
+  }
+}

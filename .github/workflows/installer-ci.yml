@@ -1,0 +1,68 @@
+name: Installer CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: installer/src-tauri -> target
+
+      - name: Install exact frontend dependencies
+        working-directory: installer
+        run: npm ci
+
+      - name: Check deterministic plugin bundle
+        working-directory: installer
+        run: |
+          npm run bundle:plugin
+          cp src-tauri/resources/plugin-bundle-files.json "$RUNNER_TEMP/plugin-bundle-files.first.json"
+          npm run bundle:plugin
+          diff -u "$RUNNER_TEMP/plugin-bundle-files.first.json" src-tauri/resources/plugin-bundle-files.json
+          npm run bundle:plugin:verify
+
+      - name: Validate manifests, versions, TypeScript and Rust
+        working-directory: installer
+        run: npm run check
+
+      - name: Run unit and integration tests
+        working-directory: installer
+        run: npm test
+
+      - name: Compile unsigned development application
+        working-directory: installer
+        run: npx tauri build --no-bundle
+
+      - name: Reject forbidden tracked artifacts
+        run: |
+          if git ls-files | grep -E '(^|/)(\.DS_Store|AGENTS\.md|CLAUDE\.md)$|\.(dmg|app\.tar\.gz|exe|sig|p12|pfx|key)$'; then
+            echo "Forbidden local, binary, signature, or key artifact is tracked" >&2
+            exit 1
+          fi
+          git diff --check

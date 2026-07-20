@@ -5,3 +5,12 @@
 /AGENTS.md
 /CLAUDE.md
 /.claude/
+
+# Installer build output and deterministic generated bundle resources.
+/installer/dist/
+/installer/node_modules/
+/installer/src-tauri/target/
+/installer/src-tauri/resources/plugin-bundle/
+/installer/src-tauri/resources/plugin-bundle-files.json
+/installer/src-tauri/resources/.plugin-bundle-generated
+/release-artifacts/

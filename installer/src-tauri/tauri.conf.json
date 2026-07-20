@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LidFly Codex Plugin Installer",
+  "mainBinaryName": "lidfly-codex-plugin-installer",
+  "version": "1.0.0",
+  "identifier": "ru.lidfly.codex-plugin-installer",
+  "build": {
+    "beforeDevCommand": "npm run dev:frontend",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build:frontend",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "LidFly Codex Plugin Installer",
+        "width": 820,
+        "height": 720,
+        "minWidth": 680,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://lidfly.ru"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "nsis"],
+    "createUpdaterArtifacts": true,
+    "licenseFile": "../../LICENSE",
+    "resources": {
+      "resources/plugin-bundle/": "plugin-bundle/",
+      "resources/plugin-bundle-files.json": "plugin-bundle-files.json"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "entitlements": "./Entitlements.plist",
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": ["https://lidfly.ru/codex-plugin-downloads/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

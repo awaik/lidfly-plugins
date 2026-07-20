@@ -1,0 +1,456 @@
+name: Installer Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing clean tag version, without v
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      plugin_bundle_sha256: ${{ steps.bundle.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
+
+      - id: release
+        name: Resolve and validate the clean tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+            TAG="v$VERSION"
+          else
+            TAG="$GITHUB_REF_NAME"
+            VERSION="${TAG#v}"
+          fi
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git describe --tags --exact-match)" = "$TAG"
+          test -z "$(git status --porcelain)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
+      - name: Validate source and build the plugin bundle once
+        working-directory: installer
+        run: |
+          npm ci
+          npm run bundle:plugin
+          npm run bundle:plugin:verify
+          npm run project:verify
+          npm run version:check
+          npm run typecheck
+          npm run test:node
+          test "$(node -p "require('./package.json').version")" = "${{ steps.release.outputs.version }}"
+
+      - id: bundle
+        name: Record the plugin bundle hash
+        working-directory: installer
+        run: |
+          HASH=$(node -p "require('./src-tauri/resources/plugin-bundle-files.json').plugin_bundle_sha256")
+          echo "sha256=$HASH" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-bundle-${{ steps.release.outputs.version }}
+          path: |
+            installer/src-tauri/resources/plugin-bundle
+            installer/src-tauri/resources/plugin-bundle-files.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    needs: prepare
+    runs-on: macos-14
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.commit }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: installer/src-tauri -> target
+
+      - name: Install exact dependencies
+        working-directory: installer
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-bundle-${{ needs.prepare.outputs.version }}
+          path: installer/src-tauri/resources
+
+      - name: Verify the shared plugin bundle
+        working-directory: installer
+        run: |
+          npm run bundle:plugin:verify
+          test "$(node -p "require('./src-tauri/resources/plugin-bundle-files.json').plugin_bundle_sha256")" = "${{ needs.prepare.outputs.plugin_bundle_sha256 }}"
+
+      - name: Require macOS release credentials
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY_PASSWORD }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_UPDATER_PUBLIC_KEY; do
+            test -n "${!name}" || { echo "Missing release credential: $name" >&2; exit 1; }
+          done
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/lidfly-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/lidfly-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "temporary" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "temporary" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "temporary" "$KEYCHAIN_PATH"
+
+      - name: Create release-only Tauri config
+        working-directory: installer
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: node ../scripts/write-release-tauri-config.mjs "$RUNNER_TEMP/tauri-release.json"
+
+      - name: Build, sign and notarize universal macOS artifacts
+        working-directory: installer
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --bundles app,dmg --target universal-apple-darwin --config "$RUNNER_TEMP/tauri-release.json"
+
+      - name: Normalize exact artifact names
+        working-directory: installer
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle"
+          OUT="$RUNNER_TEMP/macos-artifacts"
+          mkdir -p "$OUT"
+          cp "$BUNDLE/dmg/LidFly Codex Plugin Installer_${VERSION}_universal.dmg" "$OUT/LidFly Codex Plugin Installer_${VERSION}_universal.dmg"
+          cp "$BUNDLE/macos/LidFly Codex Plugin Installer.app.tar.gz" "$OUT/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz"
+          cp "$BUNDLE/macos/LidFly Codex Plugin Installer.app.tar.gz.sig" "$OUT/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz.sig"
+
+      - name: Verify Developer ID, Gatekeeper, notarization, stapling and both architectures
+        working-directory: installer
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          BUNDLE="src-tauri/target/universal-apple-darwin/release/bundle"
+          APP="$BUNDLE/macos/LidFly Codex Plugin Installer.app"
+          DMG="$RUNNER_TEMP/macos-artifacts/LidFly Codex Plugin Installer_${VERSION}_universal.dmg"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -F "Runtime Version"
+          spctl --assess --type execute --verbose=4 "$APP"
+          xcrun stapler validate "$DMG"
+          ARCHS=$(lipo -archs "$APP/Contents/MacOS/lidfly-codex-plugin-installer")
+          [[ "$ARCHS" == *x86_64* && "$ARCHS" == *arm64* ]]
+          EXTRACTED="$RUNNER_TEMP/updater-app"
+          mkdir -p "$EXTRACTED"
+          tar -xzf "$RUNNER_TEMP/macos-artifacts/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz" -C "$EXTRACTED"
+          codesign --verify --deep --strict --verbose=2 "$EXTRACTED/LidFly Codex Plugin Installer.app"
+          spctl --assess --type execute --verbose=4 "$EXTRACTED/LidFly Codex Plugin Installer.app"
+          EXTRACTED_ARCHS=$(lipo -archs "$EXTRACTED/LidFly Codex Plugin Installer.app/Contents/MacOS/lidfly-codex-plugin-installer")
+          [[ "$EXTRACTED_ARCHS" == *x86_64* && "$EXTRACTED_ARCHS" == *arm64* ]]
+          MOUNT_POINT="$RUNNER_TEMP/lidfly-dmg-mount"
+          mkdir -p "$MOUNT_POINT"
+          printf 'Y\n' | hdiutil attach -readonly -noautoopen -nobrowse -mountpoint "$MOUNT_POINT" "$DMG" >/dev/null
+          trap 'hdiutil detach "$MOUNT_POINT" >/dev/null' EXIT
+          codesign --verify --deep --strict --verbose=2 "$MOUNT_POINT/LidFly Codex Plugin Installer.app"
+          spctl --assess --type execute --verbose=4 "$MOUNT_POINT/LidFly Codex Plugin Installer.app"
+          DMG_ARCHS=$(lipo -archs "$MOUNT_POINT/LidFly Codex Plugin Installer.app/Contents/MacOS/lidfly-codex-plugin-installer")
+          [[ "$DMG_ARCHS" == *x86_64* && "$DMG_ARCHS" == *arm64* ]]
+          hdiutil detach "$MOUNT_POINT"
+          trap - EXIT
+
+      - name: Verify updater signature on final macOS payload
+        working-directory: installer
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          cargo run --quiet --manifest-path src-tauri/Cargo.toml --example verify-updater-signature -- \
+            "$RUNNER_TEMP/macos-artifacts/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz" \
+            "$RUNNER_TEMP/macos-artifacts/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz.sig"
+
+      - name: Record Apple signing evidence
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          export DMG="$RUNNER_TEMP/macos-artifacts/LidFly Codex Plugin Installer_${VERSION}_universal.dmg"
+          export UPDATER="$RUNNER_TEMP/macos-artifacts/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz"
+          node - <<'NODE'
+          const fs = require('fs'); const crypto = require('crypto');
+          const sha = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/macos-artifacts/apple-evidence.json`, JSON.stringify({
+            schema_version: 1, release_version: process.env.VERSION,
+            apple: { developer_id: true, hardened_runtime: true, notarized: true, stapled: true,
+              gatekeeper_accepted: true, architectures: ['x86_64', 'arm64'],
+              dmg_sha256: sha(process.env.DMG), updater_sha256: sha(process.env.UPDATER) }
+          }, null, 2) + '\n');
+          NODE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ needs.prepare.outputs.version }}
+          path: ${{ runner.temp }}/macos-artifacts
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    needs: prepare
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.commit }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: installer/src-tauri -> target
+
+      - name: Install exact dependencies
+        working-directory: installer
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-bundle-${{ needs.prepare.outputs.version }}
+          path: installer/src-tauri/resources
+
+      - name: Verify the shared plugin bundle
+        working-directory: installer
+        shell: bash
+        run: |
+          npm run bundle:plugin:verify
+          test "$(node -p "require('./src-tauri/resources/plugin-bundle-files.json').plugin_bundle_sha256")" = "${{ needs.prepare.outputs.plugin_bundle_sha256 }}"
+
+      - name: Require Windows release credentials
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY_PASSWORD }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: |
+          @('WINDOWS_CERTIFICATE','WINDOWS_CERTIFICATE_PASSWORD','WINDOWS_CERTIFICATE_THUMBPRINT','WINDOWS_TIMESTAMP_URL','TAURI_SIGNING_PRIVATE_KEY','TAURI_SIGNING_PRIVATE_KEY_PASSWORD','TAURI_UPDATER_PUBLIC_KEY') | ForEach-Object {
+            if ([string]::IsNullOrWhiteSpace((Get-Item "Env:$_").Value)) { throw "Missing release credential: $_" }
+          }
+
+      - name: Import Authenticode certificate
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'lidfly-code-signing.pfx'
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password | Out-Null
+
+      - name: Create release-only Tauri config
+        working-directory: installer
+        env:
+          LIDFLY_RELEASE_PLATFORM: windows
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+          WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: node ../scripts/write-release-tauri-config.mjs "$env:RUNNER_TEMP/tauri-release.json"
+
+      - name: Build and Authenticode-sign Windows x64 installer
+        working-directory: installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --bundles nsis --target x86_64-pc-windows-msvc --config "$env:RUNNER_TEMP/tauri-release.json"
+
+      - name: Normalize names and verify final Authenticode bytes
+        working-directory: installer
+        shell: pwsh
+        run: |
+          $version = '${{ needs.prepare.outputs.version }}'
+          $source = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/LidFly Codex Plugin Installer_${version}_x64-setup.exe"
+          $out = Join-Path $env:RUNNER_TEMP 'windows-artifacts'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $installer = Join-Path $out "LidFly Codex Plugin Installer_${version}_x64-setup.exe"
+          Copy-Item $source $installer
+          Copy-Item "$source.sig" "$installer.sig"
+          $signature = Get-AuthenticodeSignature $installer
+          if ($signature.Status -ne 'Valid') { throw "Windows signature is not valid: $($signature.Status)" }
+          if ($null -eq $signature.TimeStamperCertificate) { throw 'Authenticode signature has no trusted timestamp' }
+          $verifyOutput = & signtool.exe verify /pa /all /v $installer 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "signtool verification failed: $verifyOutput" }
+          if ($verifyOutput -notmatch 'SHA256') { throw 'Authenticode verification did not report SHA-256' }
+
+      - name: Verify updater signature after final Authenticode signing
+        working-directory: installer
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: |
+          cargo run --quiet --manifest-path src-tauri/Cargo.toml --example verify-updater-signature -- `
+            "$env:RUNNER_TEMP/windows-artifacts/LidFly Codex Plugin Installer_${{ needs.prepare.outputs.version }}_x64-setup.exe" `
+            "$env:RUNNER_TEMP/windows-artifacts/LidFly Codex Plugin Installer_${{ needs.prepare.outputs.version }}_x64-setup.exe.sig"
+
+      - name: Record Windows signing evidence
+        shell: pwsh
+        run: |
+          $version = '${{ needs.prepare.outputs.version }}'
+          $installer = "$env:RUNNER_TEMP/windows-artifacts/LidFly Codex Plugin Installer_${version}_x64-setup.exe"
+          $evidence = @{
+            schema_version = 1; release_version = $version;
+            windows = @{
+              authenticode_status = 'Valid'; digest_algorithm = 'sha256'; timestamped = $true;
+              installer_sha256 = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant();
+              updater_signature_after_authenticode = $true
+            }
+          }
+          $evidence | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/windows-artifacts/windows-evidence.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ needs.prepare.outputs.version }}
+          path: ${{ runner.temp }}/windows-artifacts
+          if-no-files-found: error
+          retention-days: 14
+
+  handoff:
+    needs: [prepare, macos, windows]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.commit }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install exact dependencies
+        working-directory: installer
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-bundle-${{ needs.prepare.outputs.version }}
+          path: release-artifacts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-${{ needs.prepare.outputs.version }}
+          path: release-artifacts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-${{ needs.prepare.outputs.version }}
+          path: release-artifacts
+
+      - name: Merge platform evidence
+        run: |
+          node scripts/merge-signing-evidence.mjs \
+            release-artifacts/apple-evidence.json \
+            release-artifacts/windows-evidence.json \
+            release-artifacts/signing-evidence.json
+
+      - name: Verify exact release artifacts and prepare direct-mcp handoff
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        working-directory: installer
+        run: |
+          npm run release:verify -- \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --artifacts-dir ../release-artifacts \
+            --evidence ../release-artifacts/signing-evidence.json
+          npm run release:handoff -- \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --tag "${{ needs.prepare.outputs.tag }}" \
+            --artifacts-dir ../release-artifacts \
+            --evidence ../release-artifacts/signing-evidence.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lidfly-installer-${{ needs.prepare.outputs.version }}-handoff
+          path: |
+            release-artifacts/LidFly Codex Plugin Installer_*.dmg
+            release-artifacts/LidFly Codex Plugin Installer_*.app.tar.gz
+            release-artifacts/LidFly Codex Plugin Installer_*.app.tar.gz.sig
+            release-artifacts/LidFly Codex Plugin Installer_*.exe
+            release-artifacts/LidFly Codex Plugin Installer_*.exe.sig
+            release-artifacts/SHA256SUMS.txt
+            release-artifacts/plugin-bundle-files.json
+            release-artifacts/release-handoff.json
+          if-no-files-found: error
+          retention-days: 30
