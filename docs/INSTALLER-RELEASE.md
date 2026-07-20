@@ -114,7 +114,7 @@ lipo -archs <app binary>
 
 ## Windows job
 
-NSIS настроен как per-user installer для `x86_64-pc-windows-msvc`. До build workflow проверяет private key, срок действия и Code Signing EKU сертификата. У готового EXE отдельно читается PE header: machine обязан быть `AMD64` (`0x8664`). Tauri получает certificate thumbprint, SHA-256 и timestamp URL через release-only config. После build выполняются `Get-AuthenticodeSignature` и `signtool verify /pa /all /v`; status обязан быть `Valid`, timestamp certificate — присутствовать, а file digest — SHA-256.
+NSIS настроен как per-user installer для `x86_64-pc-windows-msvc`. До build workflow проверяет private key, срок действия и Code Signing EKU сертификата. У основного application binary, который упаковывает NSIS, отдельно читается PE header: machine обязан быть `AMD64` (`0x8664`). Сам NSIS bootstrapper может оставаться PE32 — это не меняет архитектуру установленного приложения. Tauri получает certificate thumbprint, SHA-256 и timestamp URL через release-only config. После build выполняются `Get-AuthenticodeSignature` и `signtool verify /pa /all /v`; status обязан быть `Valid`, timestamp certificate — присутствовать, а file digest — SHA-256.
 
 Порядок обязателен:
 

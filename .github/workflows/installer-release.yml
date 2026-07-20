@@ -369,12 +369,13 @@ jobs:
         run: |
           $version = '${{ needs.prepare.outputs.version }}'
           $source = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/LidFly Codex Plugin Installer_${version}_x64-setup.exe"
+          $application = 'src-tauri/target/x86_64-pc-windows-msvc/release/lidfly-codex-plugin-installer.exe'
           $out = Join-Path $env:RUNNER_TEMP 'windows-artifacts'
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           $installer = Join-Path $out "LidFly Codex Plugin Installer_${version}_x64-setup.exe"
           Copy-Item $source $installer
           Copy-Item "$source.sig" "$installer.sig"
-          node ../scripts/verify-pe-machine.mjs $installer
+          node ../scripts/verify-pe-machine.mjs $application
           $signature = Get-AuthenticodeSignature $installer
           if ($signature.Status -ne 'Valid') { throw "Windows signature is not valid: $($signature.Status)" }
           if ($null -eq $signature.TimeStamperCertificate) { throw 'Authenticode signature has no trusted timestamp' }
