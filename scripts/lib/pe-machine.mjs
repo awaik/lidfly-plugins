@@ -30,3 +30,47 @@ export function assertAmd64Pe(bytes) {
   }
   return inspected;
 }
+
+export function inspectPeAuthenticode(bytes) {
+  inspectPeMachine(bytes);
+  const peOffset = bytes.readInt32LE(0x3c);
+  const coffHeaderOffset = peOffset + 4;
+  const optionalHeaderOffset = coffHeaderOffset + 20;
+  const optionalHeaderSize = bytes.readUInt16LE(coffHeaderOffset + 16);
+  const optionalHeaderEnd = optionalHeaderOffset + optionalHeaderSize;
+  if (optionalHeaderEnd > bytes.length) {
+    throw new Error("Windows binary has a truncated PE optional header");
+  }
+
+  const magic = bytes.readUInt16LE(optionalHeaderOffset);
+  const dataDirectoriesOffset =
+    optionalHeaderOffset + (magic === 0x20b ? 112 : magic === 0x10b ? 96 : -1);
+  if (dataDirectoriesOffset < optionalHeaderOffset) {
+    throw new Error("Windows binary has an unsupported PE optional header");
+  }
+
+  // IMAGE_DIRECTORY_ENTRY_SECURITY is data directory index 4. Unlike the
+  // other entries, its first value is a file offset rather than an RVA.
+  const securityDirectoryOffset = dataDirectoriesOffset + 4 * 8;
+  if (securityDirectoryOffset + 8 > optionalHeaderEnd) {
+    throw new Error("Windows binary has no complete PE security directory");
+  }
+  const certificateOffset = bytes.readUInt32LE(securityDirectoryOffset);
+  const certificateSize = bytes.readUInt32LE(securityDirectoryOffset + 4);
+  return {
+    certificateOffset,
+    certificateSize,
+    status:
+      certificateOffset === 0 && certificateSize === 0 ? "NotSigned" : "Signed",
+  };
+}
+
+export function assertNoAuthenticode(bytes) {
+  const inspected = inspectPeAuthenticode(bytes);
+  if (inspected.status !== "NotSigned") {
+    throw new Error(
+      `Windows installer contains an Authenticode certificate table at ${inspected.certificateOffset} (${inspected.certificateSize} bytes)`,
+    );
+  }
+  return inspected;
+}

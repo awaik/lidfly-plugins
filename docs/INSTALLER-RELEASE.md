@@ -121,10 +121,9 @@ npm run release:macos:local -- X.Y.Z /absolute/output/X.Y.Z/macos
 
 ## Локальная сборка Windows
 
-Windows installer собирается на локальном Windows x64 компьютере или локальной
-Windows VM. На macOS нельзя подменять MSVC release сборкой GNU target. Нужны
-Node 22, Rust stable, `x86_64-pc-windows-msvc`, Visual Studio Build Tools и NSIS
-prerequisites Tauri.
+Предпочтительный вариант — локальный Windows x64 компьютер или локальная
+Windows VM. Нужны Node 22, Rust stable, `x86_64-pc-windows-msvc`, Visual Studio
+Build Tools и NSIS prerequisites Tauri.
 
 В PowerShell из чистого checkout того же tag:
 
@@ -142,6 +141,31 @@ npm run release:windows:local -- -Version X.Y.Z -ArtifactsDir C:\release\X.Y.Z\w
 payload, требует `Get-AuthenticodeSignature = NotSigned`, проверяет updater
 signature и сохраняет Windows evidence. Mac и Windows bundle metadata должны
 совпасть byte-for-byte.
+
+Если локальной Windows VM нет, Tauri официально допускает менее проверенный
+MSVC/NSIS cross-build на macOS через `cargo-xwin`. Это не GNU-подмена: target
+остаётся `x86_64-pc-windows-msvc`. Однократная подготовка Mac:
+
+```sh
+brew install llvm nsis
+rustup target add x86_64-pc-windows-msvc
+cargo install --locked cargo-xwin
+```
+
+Локальная cross-сборка:
+
+```sh
+cd installer
+export TAURI_SIGNING_PRIVATE_KEY_PATH='/protected/path/lidfly-codex-installer-updater.key'
+export TAURI_UPDATER_PUBLIC_KEY_PATH='/protected/path/lidfly-codex-installer-updater.key.pub'
+
+npm run release:windows:cross-local -- X.Y.Z /absolute/output/X.Y.Z/windows
+```
+
+Скрипт использует LLVM linker/resource compiler, NSIS и Microsoft SDK из
+защищённого локального `cargo-xwin` cache. Отсутствие Authenticode проверяется
+напрямую по пустому PE Security Directory, независимо от PowerShell. Перед
+публикацией cross-built EXE всё равно запускается на чистой реальной Windows x64.
 
 ## Обязательные пять файлов
 
