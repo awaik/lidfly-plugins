@@ -1,4 +1,5 @@
 .DS_Store
+.passwords
 **/.DS_Store
 
 # Local agent instructions. CLAUDE.md is a symlink to AGENTS.md.
