@@ -273,6 +273,7 @@ jobs:
             "$RUNNER_TEMP/macos-artifacts/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz.sig"
 
       - name: Record Apple signing evidence
+        working-directory: installer
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
