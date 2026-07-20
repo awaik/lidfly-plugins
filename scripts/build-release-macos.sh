@@ -90,9 +90,7 @@ xcrun stapler validate "$APP_PATH"
 # Recreate and sign the updater payload after stapling, so the released archive
 # contains exactly the app verified above.
 COPYFILE_DISABLE=1 tar -czf "$UPDATER_OUTPUT" -C "$MACOS_BUNDLE_DIR" "$APP_NAME"
-npx tauri signer sign \
-  --private-key-path "$TAURI_SIGNING_PRIVATE_KEY_PATH" \
-  "$UPDATER_OUTPUT"
+npx tauri signer sign "$UPDATER_OUTPUT"
 
 DMG_SOURCE="$RELEASE_TEMP_DIR/dmg-source"
 mkdir -p "$DMG_SOURCE"
