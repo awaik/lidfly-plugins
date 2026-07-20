@@ -103,13 +103,12 @@ codex://plugins/?marketplacePath=<encoded path to .agents/plugins/marketplace.js
 
 Приложение проверяет `https://lidfly.ru/codex-plugin-downloads/latest.json` официальным Tauri updater и никогда не разрешает downgrade автоматически. Production public key внедряет release CI через отдельный config; base development config намеренно не содержит production key. Private updater key существует только в GitHub Actions secrets или защищённом хранилище релиз-инженера.
 
-Три независимых контура нельзя смешивать:
+Контуры доверия нельзя смешивать:
 
 - Developer ID + hardened runtime + notarization + stapling защищают macOS приложение;
-- Authenticode SHA-256 + trusted timestamp защищают Windows EXE;
 - Tauri updater `.sig` защищает байты updater payload.
 
-Windows updater signature проверяется после Authenticode по финальному EXE.
+По принятой для Glas release policy Windows EXE намеренно остаётся без Authenticode. Его detached `.sig` проверяется по финальным байтам EXE и защищает доставку через updater, но первоначальный запуск Windows всё равно считает запуском приложения неизвестного издателя.
 
 ## Логи и приватность
 

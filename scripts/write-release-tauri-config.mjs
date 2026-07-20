@@ -33,26 +33,6 @@ const config = {
     },
   },
 };
-if (process.env.LIDFLY_RELEASE_PLATFORM === "windows") {
-  const certificateThumbprint =
-    process.env.WINDOWS_CERTIFICATE_THUMBPRINT?.replace(/\s/gu, "");
-  if (!/^[A-Fa-f0-9]{40}$/.test(certificateThumbprint ?? "")) {
-    throw new Error("WINDOWS_CERTIFICATE_THUMBPRINT is invalid");
-  }
-  const timestampUrl = process.env.WINDOWS_TIMESTAMP_URL;
-  const parsedTimestamp = new URL(timestampUrl ?? "invalid:");
-  if (!["http:", "https:"].includes(parsedTimestamp.protocol)) {
-    throw new Error("WINDOWS_TIMESTAMP_URL must use HTTP or HTTPS");
-  }
-  config.bundle = {
-    windows: {
-      certificateThumbprint,
-      digestAlgorithm: "sha256",
-      timestampUrl,
-      nsis: { installMode: "currentUser" },
-    },
-  };
-}
 await writeFile(outputPath, `${JSON.stringify(config, null, 2)}\n`, {
   encoding: "utf8",
   mode: 0o600,

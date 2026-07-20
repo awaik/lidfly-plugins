@@ -49,7 +49,6 @@
       "hardenedRuntime": true
     },
     "windows": {
-      "digestAlgorithm": "sha256",
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": false

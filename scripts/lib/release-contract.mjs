@@ -92,16 +92,18 @@ function parseEvidence(evidence, version, artifacts) {
   }
   const windowsEvidence = evidence.windows;
   if (
-    windowsEvidence?.authenticode_status !== "Valid" ||
-    windowsEvidence?.digest_algorithm?.toLowerCase() !== "sha256" ||
-    windowsEvidence?.timestamped !== true ||
+    windowsEvidence?.authenticode_status !== "NotSigned" ||
+    windowsEvidence?.release_policy !== "tauri_updater_signature_only" ||
     windowsEvidence?.architecture !== "x86_64" ||
-    !/^[a-f0-9]{40}$/u.test(windowsEvidence?.certificate_thumbprint ?? "") ||
     windowsEvidence?.installer_sha256 !== windows.sha256 ||
-    windowsEvidence?.updater_signature_after_authenticode !== true
+    windowsEvidence?.updater_signature_verified !== true ||
+    Object.hasOwn(windowsEvidence, "certificate_thumbprint") ||
+    Object.hasOwn(windowsEvidence, "digest_algorithm") ||
+    Object.hasOwn(windowsEvidence, "timestamped") ||
+    Object.hasOwn(windowsEvidence, "updater_signature_after_authenticode")
   ) {
     throw new Error(
-      "Windows Authenticode/timestamp evidence is incomplete or stale",
+      "Windows updater-signature-only evidence is incomplete or stale",
     );
   }
   return { apple, windows: windowsEvidence };
@@ -207,7 +209,7 @@ export async function verifyReleaseArtifacts({
   if (!skipPlatformSignatures) {
     if (!evidencePath) {
       throw new Error(
-        "--evidence is required for platform signature verification",
+        "--evidence is required for platform release policy verification",
       );
     }
     signing = parseEvidence(

@@ -83,13 +83,11 @@ async function signingEvidence(directory) {
       updater_sha256: hashes.get(names[1]),
     },
     windows: {
-      authenticode_status: "Valid",
-      digest_algorithm: "sha256",
-      timestamped: true,
+      authenticode_status: "NotSigned",
+      release_policy: "tauri_updater_signature_only",
       architecture: "x86_64",
-      certificate_thumbprint: "b".repeat(40),
       installer_sha256: hashes.get(names[3]),
-      updater_signature_after_authenticode: true,
+      updater_signature_verified: true,
     },
   };
 }
@@ -147,7 +145,7 @@ describe("release artifact contract", () => {
     ]);
   });
 
-  it("writes Windows signing config only for a SHA-1 certificate thumbprint", async () => {
+  it("writes updater config without Windows certificate credentials", async () => {
     const directory = await mkdtemp(
       path.join(os.tmpdir(), "lidfly-release-config-test-"),
     );
@@ -158,8 +156,6 @@ describe("release artifact contract", () => {
       TAURI_UPDATER_PUBLIC_KEY: Buffer.from(
         "untrusted comment: test public key\nRWQtest-public-key",
       ).toString("base64"),
-      WINDOWS_CERTIFICATE_THUMBPRINT: "a".repeat(40),
-      WINDOWS_TIMESTAMP_URL: "http://timestamp.digicert.com",
     };
     await execFileAsync(
       process.execPath,
@@ -170,28 +166,11 @@ describe("release artifact contract", () => {
       { cwd: repositoryRoot, env: environment },
     );
     const config = JSON.parse(await readFile(output, "utf8"));
-    expect(config.bundle.windows).toMatchObject({
-      certificateThumbprint: "a".repeat(40),
-      digestAlgorithm: "sha256",
-      timestampUrl: "http://timestamp.digicert.com",
-    });
-
-    await expect(
-      execFileAsync(
-        process.execPath,
-        [
-          path.join(repositoryRoot, "scripts/write-release-tauri-config.mjs"),
-          path.join(directory, "invalid.json"),
-        ],
-        {
-          cwd: repositoryRoot,
-          env: {
-            ...environment,
-            WINDOWS_CERTIFICATE_THUMBPRINT: "b".repeat(64),
-          },
-        },
-      ),
-    ).rejects.toThrow(/thumbprint is invalid/iu);
+    expect(config.plugins.updater.pubkey).toBe(
+      environment.TAURI_UPDATER_PUBLIC_KEY,
+    );
+    expect(config).not.toHaveProperty("bundle.windows.certificateThumbprint");
+    expect(config).not.toHaveProperty("bundle.windows.timestampUrl");
   });
 
   it("accepts a complete local fixture when platform/signature checks are explicitly skipped", async () => {
@@ -347,7 +326,7 @@ describe("release artifact contract", () => {
       }),
     ).resolves.toMatchObject({ version: "1.0.0" });
 
-    evidence.windows.authenticode_status = "NotSigned";
+    evidence.windows.authenticode_status = "Valid";
     await writeFile(evidencePath, JSON.stringify(evidence));
     await expect(
       verifyReleaseArtifacts({
@@ -358,9 +337,23 @@ describe("release artifact contract", () => {
         evidencePath,
         skipUpdaterSignatures: true,
       }),
-    ).rejects.toThrow(/Authenticode/iu);
+    ).rejects.toThrow(/updater-signature-only/iu);
 
-    evidence.windows.authenticode_status = "Valid";
+    evidence.windows.authenticode_status = "NotSigned";
+    evidence.windows.certificate_thumbprint = "b".repeat(40);
+    await writeFile(evidencePath, JSON.stringify(evidence));
+    await expect(
+      verifyReleaseArtifacts({
+        version: "1.0.0",
+        artifactsDir: directory,
+        pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
+        repositoryRoot,
+        evidencePath,
+        skipUpdaterSignatures: true,
+      }),
+    ).rejects.toThrow(/updater-signature-only/iu);
+
+    delete evidence.windows.certificate_thumbprint;
     evidence.apple.stapled = false;
     await writeFile(evidencePath, JSON.stringify(evidence));
     await expect(
@@ -386,7 +379,7 @@ describe("release artifact contract", () => {
         evidencePath,
         skipUpdaterSignatures: true,
       }),
-    ).rejects.toThrow(/Authenticode/iu);
+    ).rejects.toThrow(/updater-signature-only/iu);
   });
 
   it("rejects a built bundle whose bytes no longer match its metadata", async () => {
