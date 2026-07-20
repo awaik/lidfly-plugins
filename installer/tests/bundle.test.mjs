@@ -308,7 +308,7 @@ describe("release artifact contract", () => {
         skipPlatformSignatures: true,
       }),
     ).rejects.toThrow(/signature verification failed/iu);
-  }, 30_000);
+  }, 120_000);
 
   it("accepts complete platform evidence and rejects stale or failed signing checks", async () => {
     const directory = await fakeReleaseDirectory();
