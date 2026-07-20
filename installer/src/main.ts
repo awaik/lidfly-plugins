@@ -317,7 +317,7 @@ elements.verify.addEventListener("click", () => {
   void refreshStatus()
     .then(() =>
       showNotice(
-        "Проверка завершена. Контрольные суммы файлов обновлены.",
+        "Проверка завершена. Контрольные суммы файлов сверены.",
         "success",
       ),
     )

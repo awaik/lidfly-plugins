@@ -33,6 +33,18 @@ export function mapUpdaterError(error: unknown): UpdaterErrorMessage {
     };
   }
   if (
+    normalized.includes("not configured") ||
+    normalized.includes("configuration") ||
+    normalized.includes("pubkey")
+  ) {
+    return {
+      kind: "not_configured",
+      title: "Обновления отключены в этой сборке",
+      message:
+        "Development-сборка не содержит production public key. Установленный plugin bundle не изменён.",
+    };
+  }
+  if (
     normalized.includes("signature") ||
     normalized.includes("minisign") ||
     normalized.includes("public key")
@@ -42,14 +54,6 @@ export function mapUpdaterError(error: unknown): UpdaterErrorMessage {
       title: "Подпись обновления не прошла проверку",
       message:
         "Обновление не установлено. Не скачивайте его из другого источника; сообщите об ошибке поддержке LidFly.",
-    };
-  }
-  if (normalized.includes("pubkey") || normalized.includes("configuration")) {
-    return {
-      kind: "not_configured",
-      title: "Обновления отключены в этой сборке",
-      message:
-        "Development-сборка не содержит production public key. Установленный plugin bundle не изменён.",
     };
   }
   return {

@@ -94,6 +94,11 @@ fn full_install_verify_repair_remove_flow_is_safe_and_idempotent() {
     assert_eq!(installed.changed_files.len(), BUNDLE_PATHS.len());
     assert!(installed.status.can_open_codex);
     assert_eq!(installed.status.phase, InstallerPhase::InstalledBundle);
+    assert!(Path::new(&installed.status.marketplace_path).is_absolute());
+    assert!(installed
+        .status
+        .marketplace_path
+        .ends_with("marketplace/.agents/plugins/marketplace.json"));
 
     let repeated = core
         .prepare(false, false, FailPoint::None)
@@ -183,6 +188,116 @@ fn failure_before_authoritative_state_restores_previous_state() {
 }
 
 #[test]
+fn newer_bundle_classifies_previous_hashes_as_outdated_not_modified() {
+    let app_data = tempfile::tempdir().expect("create app data");
+    let v1 = fixture("1.0.0");
+    let v2 = fixture("1.1.0");
+    core(&v1, app_data.path(), "1.0.0")
+        .prepare(false, false, FailPoint::None)
+        .expect("install v1");
+
+    let status = core(&v2, app_data.path(), "1.1.0")
+        .status()
+        .expect("classify v1 files for v2");
+    assert!(status.update_required);
+    assert!(status
+        .files
+        .iter()
+        .any(|file| file.condition == FileCondition::Outdated));
+    assert!(!status
+        .files
+        .iter()
+        .any(|file| file.condition == FileCondition::Modified));
+}
+
+#[test]
+fn remove_refuses_an_inconsistent_managed_manifest() {
+    let app_data = tempfile::tempdir().expect("create app data");
+    let fixture = fixture("1.0.0");
+    let core = core(&fixture, app_data.path(), "1.0.0");
+    core.prepare(false, false, FailPoint::None)
+        .expect("install fixture");
+    fs::remove_file(
+        app_data
+            .path()
+            .join("marketplace/.lidfly-installer/managed-files.json"),
+    )
+    .expect("remove managed mirror");
+
+    let error = core
+        .remove()
+        .expect_err("remove must fail closed without managed-files.json");
+    assert_eq!(error.code, "managed_state_inconsistent");
+    for relative in BUNDLE_PATHS {
+        assert!(app_data.path().join("marketplace").join(relative).is_file());
+    }
+}
+
+#[test]
+fn tampered_transaction_journal_cannot_target_an_unknown_file() {
+    let app_data = tempfile::tempdir().expect("create app data");
+    let fixture = fixture("1.0.0");
+    let core = core(&fixture, app_data.path(), "1.0.0");
+    core.prepare(false, false, FailPoint::None)
+        .expect("install fixture");
+    let note = app_data.path().join("marketplace/my-notes.txt");
+    fs::write(&note, b"preserve me").expect("write unknown file");
+    let transaction = app_data
+        .path()
+        .join("marketplace/.lidfly-installer/transactions/tampered");
+    fs::create_dir_all(transaction.join("prepared")).expect("create prepared directory");
+    fs::create_dir_all(transaction.join("previous")).expect("create previous directory");
+    fs::write(
+        transaction.join("journal.json"),
+        format!(
+            r#"{{"schema_version":1,"target_bundle_sha256":"{}","entries":[{{"target":"my-notes.txt","prepared":"prepared/file","previous":"previous/file","existed":true,"previous_sha256":"{}","new_sha256":"{}"}}]}}"#,
+            "a".repeat(64),
+            "b".repeat(64),
+            "c".repeat(64)
+        ),
+    )
+    .expect("write tampered journal");
+
+    let error = core
+        .status()
+        .expect_err("tampered transaction must fail closed");
+    assert_eq!(error.code, "unsafe_transaction");
+    assert_eq!(fs::read(note).expect("read unknown file"), b"preserve me");
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_transactions_directory_is_rejected_without_touching_external_files() {
+    use std::os::unix::fs::symlink;
+
+    let app_data = tempfile::tempdir().expect("create app data");
+    let outside = tempfile::tempdir().expect("create outside directory");
+    let fixture = fixture("1.0.0");
+    let core = core(&fixture, app_data.path(), "1.0.0");
+    core.prepare(false, false, FailPoint::None)
+        .expect("install fixture");
+
+    let transactions = app_data
+        .path()
+        .join("marketplace/.lidfly-installer/transactions");
+    fs::remove_dir(&transactions).expect("remove empty transactions directory");
+    let outside_transaction = outside.path().join("outside-transaction");
+    fs::create_dir_all(&outside_transaction).expect("create outside transaction");
+    let outside_file = outside_transaction.join("sentinel");
+    fs::write(&outside_file, b"do not touch").expect("write outside sentinel");
+    symlink(outside.path(), &transactions).expect("symlink transactions directory");
+
+    let error = core
+        .status()
+        .expect_err("symlinked transactions directory must fail closed");
+    assert_eq!(error.code, "unsafe_transaction_root");
+    assert_eq!(
+        fs::read(outside_file).expect("read outside sentinel"),
+        b"do not touch"
+    );
+}
+
+#[test]
 fn operation_lock_rejects_a_second_instance() {
     let app_data = tempfile::tempdir().expect("create app data");
     let fixture = fixture("1.0.0");
@@ -255,4 +370,59 @@ fn symlink_target_is_rejected_without_touching_external_file() {
         fs::read(&outside_file).expect("read outside file"),
         b"do not touch"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_control_directory_is_rejected_without_touching_external_files() {
+    use std::os::unix::fs::symlink;
+
+    let app_data = tempfile::tempdir().expect("create app data");
+    let outside = tempfile::tempdir().expect("create outside directory");
+    let outside_file = outside.path().join("sentinel");
+    fs::write(&outside_file, b"do not touch").expect("write outside sentinel");
+    let marketplace = app_data.path().join("marketplace");
+    fs::create_dir_all(&marketplace).expect("create marketplace root");
+    symlink(outside.path(), marketplace.join(".lidfly-installer"))
+        .expect("symlink control directory");
+    let fixture = fixture("1.0.0");
+    let core = core(&fixture, app_data.path(), "1.0.0");
+
+    let error = core
+        .status()
+        .expect_err("symlinked control directory must be rejected");
+    assert!(matches!(
+        error.code.as_str(),
+        "unsafe_parent" | "unsafe_directory"
+    ));
+    assert_eq!(
+        fs::read(outside_file).expect("read outside sentinel"),
+        b"do not touch"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_installed_state_is_rejected_without_reading_external_json() {
+    use std::os::unix::fs::symlink;
+
+    let app_data = tempfile::tempdir().expect("create app data");
+    let outside = tempfile::tempdir().expect("create outside directory");
+    let fixture = fixture("1.0.0");
+    let core = core(&fixture, app_data.path(), "1.0.0");
+    core.prepare(false, false, FailPoint::None)
+        .expect("install fixture");
+    let installed_state = app_data
+        .path()
+        .join("marketplace/.lidfly-installer/installed-state.json");
+    fs::remove_file(&installed_state).expect("remove installed state");
+    let outside_state = outside.path().join("outside-state.json");
+    fs::write(&outside_state, b"{}").expect("write outside state");
+    symlink(&outside_state, &installed_state).expect("symlink installed state");
+
+    let error = core
+        .status()
+        .expect_err("symlinked installed state must be rejected");
+    assert_eq!(error.code, "unsafe_installed_state");
+    assert_eq!(fs::read(outside_state).expect("read outside state"), b"{}");
 }

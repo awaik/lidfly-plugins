@@ -42,6 +42,8 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "$(git describe --tags --exact-match)" = "$TAG"
           test -z "$(git status --porcelain)"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor HEAD refs/remotes/origin/main
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -60,13 +62,10 @@ jobs:
         working-directory: installer
         run: |
           npm ci
-          npm run bundle:plugin
-          npm run bundle:plugin:verify
-          npm run project:verify
-          npm run version:check
-          npm run typecheck
-          npm run test:node
+          npm run check
+          npm test
           test "$(node -p "require('./package.json').version")" = "${{ steps.release.outputs.version }}"
+          test -z "$(git status --porcelain)"
 
       - id: bundle
         name: Record the plugin bundle hash

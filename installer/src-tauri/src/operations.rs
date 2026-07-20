@@ -29,7 +29,6 @@ pub struct InstallLayout {
     control_root: PathBuf,
     installed_state: PathBuf,
     managed_state: PathBuf,
-    logs_root: PathBuf,
 }
 
 impl InstallLayout {
@@ -40,7 +39,6 @@ impl InstallLayout {
             marketplace_manifest: marketplace_root.join(".agents/plugins/marketplace.json"),
             installed_state: control_root.join("installed-state.json"),
             managed_state: control_root.join("managed-files.json"),
-            logs_root: control_root.join("logs"),
             marketplace_root,
             control_root,
         }
@@ -84,6 +82,7 @@ struct TransactionEntry {
     prepared: String,
     previous: String,
     existed: bool,
+    previous_sha256: Option<String>,
     new_sha256: String,
 }
 
@@ -101,6 +100,13 @@ struct Classification {
 
 fn create_secure_dir(path: &Path) -> Result<(), ClientError> {
     fs::create_dir_all(path)?;
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(ClientError::new(
+            "unsafe_directory",
+            "Служебный каталог заменён ссылкой или файлом.",
+        ));
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -133,9 +139,33 @@ fn ensure_root_safe(root: &Path) -> Result<(), ClientError> {
             "unsafe_marketplace_root",
             "Каталог marketplace заменён ссылкой или файлом. Операция остановлена.",
         )),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => create_secure_dir(root),
         Err(error) => Err(error.into()),
     }
+}
+
+fn ensure_relative_directory_safe(root: &Path, relative: &str) -> Result<PathBuf, ClientError> {
+    ensure_root_safe(root)?;
+    let directory = safe_join(root, relative)?;
+    let mut current = root.to_path_buf();
+    for component in Path::new(relative).components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(ClientError::new(
+                    "unsafe_directory",
+                    format!("Каталог заменён ссылкой или файлом: {relative}"),
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&current)?;
+                create_secure_dir(&current)?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(directory)
 }
 
 fn ensure_target_parent_safe(root: &Path, relative: &str) -> Result<PathBuf, ClientError> {
@@ -152,23 +182,16 @@ fn ensure_target_parent_safe(root: &Path, relative: &str) -> Result<PathBuf, Cli
             format!("Путь выходит за пределы marketplace: {relative}"),
         )
     })?;
-    let mut current = root.to_path_buf();
-    create_secure_dir(root)?;
-    for component in relative_parent.components() {
-        current.push(component);
-        match fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
-            Ok(_) => {
-                return Err(ClientError::new(
-                    "unsafe_parent",
-                    format!("Родительский путь небезопасен: {relative}"),
-                ));
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                create_secure_dir(&current)?
-            }
-            Err(error) => return Err(error.into()),
-        }
+    if !relative_parent.as_os_str().is_empty() {
+        let relative_parent = relative_slashes(relative_parent);
+        ensure_relative_directory_safe(root, &relative_parent).map_err(|_| {
+            ClientError::new(
+                "unsafe_parent",
+                format!("Родительский путь небезопасен: {relative}"),
+            )
+        })?;
+    } else {
+        ensure_root_safe(root)?;
     }
     Ok(target)
 }
@@ -195,8 +218,21 @@ impl InstallerCore {
 
     fn lock(&self) -> Result<OperationLock, ClientError> {
         ensure_root_safe(&self.layout.marketplace_root)?;
-        create_secure_dir(&self.layout.control_root)?;
-        let lock_path = self.layout.control_root.join("operation.lock");
+        let lock_path = ensure_target_parent_safe(
+            &self.layout.marketplace_root,
+            ".lidfly-installer/operation.lock",
+        )?;
+        match fs::symlink_metadata(&lock_path) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(ClientError::new(
+                    "unsafe_operation_lock",
+                    "Файл блокировки установщика заменён ссылкой или каталогом.",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
         let mut options = OpenOptions::new();
         options.read(true).write(true).create(true);
         #[cfg(unix)]
@@ -205,6 +241,13 @@ impl InstallerCore {
             options.mode(0o600);
         }
         let file = options.open(lock_path)?;
+        let metadata = file.metadata()?;
+        if !metadata.is_file() {
+            return Err(ClientError::new(
+                "unsafe_operation_lock",
+                "Файл блокировки установщика имеет небезопасный тип.",
+            ));
+        }
         file.try_lock_exclusive().map_err(|_| {
             ClientError::new(
                 "operation_in_progress",
@@ -286,6 +329,7 @@ impl InstallerCore {
         let state_matches = state.as_ref().is_some_and(|installed| {
             installed.plugin_version == self.bundle.metadata.plugin_version
                 && installed.plugin_bundle_sha256 == self.bundle.metadata.plugin_bundle_sha256
+                && installed.managed_files == self.bundle.metadata.files
                 && state_consistent
         });
         let any_present = files
@@ -310,6 +354,7 @@ impl InstallerCore {
             matches!((installed_semver, embedded_semver), (Some(a), Some(b)) if a > b);
         let update_required = state.as_ref().is_some_and(|installed| {
             installed.plugin_bundle_sha256 != self.bundle.metadata.plugin_bundle_sha256
+                || installed.managed_files != self.bundle.metadata.files
         });
         let can_open_codex = all_current && state_matches;
 
@@ -431,18 +476,21 @@ impl InstallerCore {
         }
 
         let transaction_id = Uuid::new_v4().to_string();
-        let transaction_root = self
-            .layout
-            .control_root
-            .join("transactions")
-            .join(&transaction_id);
-        let prepared_root = transaction_root.join("prepared");
-        let previous_root = transaction_root.join("previous");
-        create_secure_dir(&prepared_root)?;
-        create_secure_dir(&previous_root)?;
+        let transaction_relative = format!("{CONTROL_DIRECTORY}/transactions/{transaction_id}");
+        let transaction_root =
+            ensure_relative_directory_safe(&self.layout.marketplace_root, &transaction_relative)?;
+        let prepared_root = ensure_relative_directory_safe(
+            &self.layout.marketplace_root,
+            &format!("{transaction_relative}/prepared"),
+        )?;
+        let previous_root = ensure_relative_directory_safe(
+            &self.layout.marketplace_root,
+            &format!("{transaction_relative}/previous"),
+        )?;
 
         let mut changed_files = Vec::new();
         let mut backup_directory = None;
+        let mut backup_hashes = BTreeMap::new();
         let mut entries = Vec::new();
         let replace_paths: BTreeSet<&str> = classification
             .status
@@ -456,12 +504,13 @@ impl InstallerCore {
                 && file.condition != FileCondition::Missing
                 && file.condition != FileCondition::Unsafe
         }) {
-            let backup_root = self.layout.control_root.join("backups").join(format!(
-                "{}-{}",
+            let backup_relative = format!(
+                "{CONTROL_DIRECTORY}/backups/{}-{}",
                 Utc::now().format("%Y%m%dT%H%M%SZ"),
                 transaction_id
-            ));
-            create_secure_dir(&backup_root)?;
+            );
+            let backup_root =
+                ensure_relative_directory_safe(&self.layout.marketplace_root, &backup_relative)?;
             for file in &classification.status.files {
                 if replace_paths.contains(file.path.as_str())
                     && file.condition != FileCondition::Missing
@@ -477,6 +526,8 @@ impl InstallerCore {
                     let backup = safe_join(&backup_root, &file.path)?;
                     let bytes = fs::read(source)?;
                     write_secure_file(&backup, &bytes)?;
+                    let (backup_sha256, _) = sha256_file(&backup)?;
+                    backup_hashes.insert(file.path.clone(), backup_sha256);
                 }
             }
             backup_directory = Some(format!(
@@ -506,6 +557,7 @@ impl InstallerCore {
                 &previous_root.join(entries.len().to_string()),
                 &file.path,
                 &file.sha256,
+                backup_hashes.get(&file.path).map(String::as_str),
             )?);
         }
 
@@ -539,6 +591,7 @@ impl InstallerCore {
             &previous_root.join(entries.len().to_string()),
             MANAGED_STATE,
             &managed_sha,
+            None,
         )?);
         entries.push(self.transaction_entry(
             &transaction_root,
@@ -546,6 +599,7 @@ impl InstallerCore {
             &previous_root.join(entries.len().to_string()),
             INSTALLED_STATE,
             &installed_sha,
+            None,
         )?);
 
         let transaction = PreparedTransaction {
@@ -575,19 +629,31 @@ impl InstallerCore {
         previous: &Path,
         target_relative: &str,
         new_sha256: &str,
+        expected_previous_sha256: Option<&str>,
     ) -> Result<TransactionEntry, ClientError> {
         let target = safe_join(&self.layout.marketplace_root, target_relative)?;
-        let existed = match fs::symlink_metadata(&target) {
-            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => true,
+        let (existed, previous_sha256) = match fs::symlink_metadata(&target) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                let (sha256, _) = sha256_file(&target)?;
+                (true, Some(sha256))
+            }
             Ok(_) => {
                 return Err(ClientError::new(
                     "unsafe_target",
                     format!("Нельзя заменить небезопасный путь: {target_relative}"),
                 ));
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (false, None),
             Err(error) => return Err(error.into()),
         };
+        if expected_previous_sha256.is_some()
+            && previous_sha256.as_deref() != expected_previous_sha256
+        {
+            return Err(ClientError::new(
+                "concurrent_modification",
+                format!("Файл изменился во время подготовки backup: {target_relative}"),
+            ));
+        }
         Ok(TransactionEntry {
             target: target_relative.to_owned(),
             prepared: relative_slashes(prepared.strip_prefix(transaction_root).map_err(|_| {
@@ -603,6 +669,7 @@ impl InstallerCore {
                 )
             })?),
             existed,
+            previous_sha256,
             new_sha256: new_sha256.to_owned(),
         })
     }
@@ -637,14 +704,51 @@ impl InstallerCore {
                     ensure_target_parent_safe(&self.layout.marketplace_root, &entry.target)?;
                 let prepared = safe_join(&transaction.root, &entry.prepared)?;
                 let previous = safe_join(&transaction.root, &entry.previous)?;
+                let prepared_metadata = fs::symlink_metadata(&prepared)?;
+                if !prepared_metadata.is_file() || prepared_metadata.file_type().is_symlink() {
+                    return Err(ClientError::new(
+                        "unsafe_transaction",
+                        format!("Staged-файл небезопасен: {}", entry.target),
+                    ));
+                }
+                let (prepared_sha256, _) = sha256_file(&prepared)?;
+                if prepared_sha256 != entry.new_sha256 {
+                    return Err(ClientError::new(
+                        "staging_validation_failed",
+                        format!("Staged-файл изменился: {}", entry.target),
+                    ));
+                }
                 if entry.existed {
+                    let target_metadata = fs::symlink_metadata(&target)?;
+                    if !target_metadata.is_file() || target_metadata.file_type().is_symlink() {
+                        return Err(ClientError::new(
+                            "concurrent_modification",
+                            format!("Файл небезопасно изменился: {}", entry.target),
+                        ));
+                    }
+                    let (target_sha256, _) = sha256_file(&target)?;
+                    if Some(target_sha256) != entry.previous_sha256 {
+                        return Err(ClientError::new(
+                            "concurrent_modification",
+                            format!("Файл изменился во время операции: {}", entry.target),
+                        ));
+                    }
                     if let Some(parent) = previous.parent() {
                         create_secure_dir(parent)?;
                     }
                     fs::rename(&target, &previous)?;
+                } else if fs::symlink_metadata(&target).is_ok() {
+                    return Err(ClientError::new(
+                        "concurrent_modification",
+                        format!("Файл появился во время операции: {}", entry.target),
+                    ));
                 }
                 if let Err(error) = fs::rename(&prepared, &target) {
-                    if entry.existed && previous.exists() {
+                    if entry.existed
+                        && fs::symlink_metadata(&previous).is_ok_and(|metadata| {
+                            metadata.is_file() && !metadata.file_type().is_symlink()
+                        })
+                    {
                         let _ = fs::rename(&previous, &target);
                     }
                     return Err(error.into());
@@ -669,28 +773,93 @@ impl InstallerCore {
         for entry in journal.entries.iter().rev() {
             let target = safe_join(&self.layout.marketplace_root, &entry.target)?;
             let previous = safe_join(transaction_root, &entry.previous)?;
-            if previous.exists() {
-                if target.exists() {
-                    let metadata = fs::symlink_metadata(&target)?;
-                    if metadata.is_file() && !metadata.file_type().is_symlink() {
-                        fs::remove_file(&target)?;
-                    } else {
+            match fs::symlink_metadata(&previous) {
+                Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                    let (previous_sha256, _) = sha256_file(&previous)?;
+                    if Some(previous_sha256) != entry.previous_sha256 {
                         return Err(ClientError::new(
-                            "rollback_unsafe_target",
-                            format!("Rollback остановлен на небезопасном пути: {}", entry.target),
+                            "rollback_unsafe_previous",
+                            format!("Rollback обнаружил изменённый backup: {}", entry.target),
                         ));
                     }
+                    match fs::symlink_metadata(&target) {
+                        Ok(metadata)
+                            if metadata.is_file() && !metadata.file_type().is_symlink() =>
+                        {
+                            fs::remove_file(&target)?;
+                        }
+                        Ok(_) => {
+                            return Err(ClientError::new(
+                                "rollback_unsafe_target",
+                                format!(
+                                    "Rollback остановлен на небезопасном пути: {}",
+                                    entry.target
+                                ),
+                            ));
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(error) => return Err(error.into()),
+                    }
+                    ensure_target_parent_safe(&self.layout.marketplace_root, &entry.target)?;
+                    fs::rename(previous, target)?;
                 }
-                ensure_target_parent_safe(&self.layout.marketplace_root, &entry.target)?;
-                fs::rename(previous, target)?;
-            } else if !entry.existed && target.exists() {
-                let metadata = fs::symlink_metadata(&target)?;
-                if metadata.is_file() && !metadata.file_type().is_symlink() {
-                    let (current_sha256, _) = sha256_file(&target)?;
-                    if current_sha256 == entry.new_sha256 {
-                        fs::remove_file(target)?;
+                Ok(_) => {
+                    return Err(ClientError::new(
+                        "rollback_unsafe_previous",
+                        format!("Rollback backup небезопасен: {}", entry.target),
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    if entry.existed {
+                        match fs::symlink_metadata(&target) {
+                            Ok(metadata)
+                                if metadata.is_file() && !metadata.file_type().is_symlink() =>
+                            {
+                                let (current_sha256, _) = sha256_file(&target)?;
+                                if Some(current_sha256) != entry.previous_sha256 {
+                                    return Err(ClientError::new(
+                                        "rollback_missing_previous",
+                                        format!(
+                                            "Rollback не нашёл исходный файл: {}",
+                                            entry.target
+                                        ),
+                                    ));
+                                }
+                            }
+                            Ok(_) => {
+                                return Err(ClientError::new(
+                                    "rollback_unsafe_target",
+                                    format!(
+                                        "Rollback остановлен на небезопасном пути: {}",
+                                        entry.target
+                                    ),
+                                ));
+                            }
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                return Err(ClientError::new(
+                                    "rollback_missing_previous",
+                                    format!("Rollback не нашёл исходный файл: {}", entry.target),
+                                ));
+                            }
+                            Err(error) => return Err(error.into()),
+                        }
+                    } else {
+                        match fs::symlink_metadata(&target) {
+                            Ok(metadata)
+                                if metadata.is_file() && !metadata.file_type().is_symlink() =>
+                            {
+                                let (current_sha256, _) = sha256_file(&target)?;
+                                if current_sha256 == entry.new_sha256 {
+                                    fs::remove_file(target)?;
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                            Err(error) => return Err(error.into()),
+                        }
                     }
                 }
+                Err(error) => return Err(error.into()),
             }
         }
         Ok(())
@@ -698,6 +867,17 @@ impl InstallerCore {
 
     fn recover_transactions(&self) -> Result<(), ClientError> {
         let transactions_root = self.layout.control_root.join("transactions");
+        match fs::symlink_metadata(&transactions_root) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(ClientError::new(
+                    "unsafe_transaction_root",
+                    "Каталог транзакций заменён ссылкой или файлом.",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.into()),
+        }
         let entries = match fs::read_dir(&transactions_root) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -714,23 +894,151 @@ impl InstallerCore {
             }
             let transaction_root = entry.path();
             let journal_path = transaction_root.join("journal.json");
-            if !journal_path.exists() {
-                fs::remove_dir_all(transaction_root)?;
-                continue;
-            }
-            let journal: TransactionJournal = serde_json::from_slice(&fs::read(&journal_path)?)?;
-            if journal.schema_version != 1 {
+            let journal_metadata = match fs::symlink_metadata(&journal_path) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    fs::remove_dir_all(transaction_root)?;
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            };
+            if !journal_metadata.is_file() || journal_metadata.file_type().is_symlink() {
                 return Err(ClientError::new(
-                    "unsupported_transaction_schema",
-                    "Нельзя безопасно восстановить неизвестную версию транзакции.",
+                    "unsafe_transaction",
+                    "Transaction journal заменён ссылкой или каталогом.",
                 ));
             }
-            let committed = read_state(&self.layout.installed_state)?
+            let journal: TransactionJournal = serde_json::from_slice(&fs::read(&journal_path)?)?;
+            self.validate_transaction_journal(&journal)?;
+            let committed_state = read_state(&self.layout.installed_state)?
                 .is_some_and(|state| state.plugin_bundle_sha256 == journal.target_bundle_sha256);
+            let mut committed = committed_state;
+            if committed {
+                for journal_entry in &journal.entries {
+                    let target = safe_join(&self.layout.marketplace_root, &journal_entry.target)?;
+                    match fs::symlink_metadata(&target) {
+                        Ok(metadata)
+                            if metadata.is_file() && !metadata.file_type().is_symlink() =>
+                        {
+                            let (sha256, _) = sha256_file(&target)?;
+                            if sha256 != journal_entry.new_sha256 {
+                                committed = false;
+                                break;
+                            }
+                        }
+                        Ok(_) => {
+                            return Err(ClientError::new(
+                                "unsafe_transaction_target",
+                                format!(
+                                    "Завершённая транзакция содержит небезопасный файл: {}",
+                                    journal_entry.target
+                                ),
+                            ));
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            committed = false;
+                            break;
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+            }
             if !committed {
                 self.rollback_transaction(&transaction_root, &journal)?;
             }
             fs::remove_dir_all(transaction_root)?;
+        }
+        Ok(())
+    }
+
+    fn validate_transaction_journal(
+        &self,
+        journal: &TransactionJournal,
+    ) -> Result<(), ClientError> {
+        if journal.schema_version != 1 {
+            return Err(ClientError::new(
+                "unsupported_transaction_schema",
+                "Нельзя безопасно восстановить неизвестную версию транзакции.",
+            ));
+        }
+        if journal.target_bundle_sha256.len() != 64
+            || !journal
+                .target_bundle_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            return Err(ClientError::new(
+                "unsafe_transaction",
+                "Transaction journal содержит некорректный bundle SHA-256.",
+            ));
+        }
+        let allowed_targets: BTreeSet<&str> = self
+            .bundle
+            .metadata
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .chain([MANAGED_STATE, INSTALLED_STATE])
+            .collect();
+        if journal.entries.len() < 2
+            || journal.entries[journal.entries.len() - 2].target != MANAGED_STATE
+            || journal.entries.last().map(|entry| entry.target.as_str()) != Some(INSTALLED_STATE)
+        {
+            return Err(ClientError::new(
+                "unsafe_transaction",
+                "State manifests должны завершать транзакцию в установленном порядке.",
+            ));
+        }
+        let bundle_positions: BTreeMap<&str, usize> = self
+            .bundle
+            .metadata
+            .files
+            .iter()
+            .enumerate()
+            .map(|(index, file)| (file.path.as_str(), index))
+            .collect();
+        let mut previous_bundle_position = None;
+        let mut seen = BTreeSet::new();
+        for (index, entry) in journal.entries.iter().enumerate() {
+            let expected_prepared = match entry.target.as_str() {
+                MANAGED_STATE => "prepared/managed-files.json".to_owned(),
+                INSTALLED_STATE => "prepared/installed-state.json".to_owned(),
+                target => format!("prepared/{target}"),
+            };
+            let expected_previous = format!("previous/{index}");
+            if !allowed_targets.contains(entry.target.as_str())
+                || !seen.insert(entry.target.as_str())
+                || entry.prepared != expected_prepared
+                || entry.previous != expected_previous
+                || entry.new_sha256.len() != 64
+                || entry.existed != entry.previous_sha256.is_some()
+                || entry.previous_sha256.as_ref().is_some_and(|sha256| {
+                    sha256.len() != 64
+                        || !sha256
+                            .bytes()
+                            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                })
+                || !entry
+                    .new_sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            {
+                return Err(ClientError::new(
+                    "unsafe_transaction",
+                    "Transaction journal содержит небезопасные пути или hashes.",
+                ));
+            }
+            if let Some(position) = bundle_positions.get(entry.target.as_str()) {
+                if previous_bundle_position.is_some_and(|previous| previous >= *position) {
+                    return Err(ClientError::new(
+                        "unsafe_transaction",
+                        "Managed-файлы в transaction journal записаны в неверном порядке.",
+                    ));
+                }
+                previous_bundle_position = Some(*position);
+            }
+            safe_join(Path::new("."), &entry.prepared)?;
+            safe_join(Path::new("."), &entry.previous)?;
         }
         Ok(())
     }
@@ -748,12 +1056,15 @@ impl InstallerCore {
                 backup_directory: None,
             });
         };
-        let removal_root = self
-            .layout
-            .control_root
-            .join("removals")
-            .join(Uuid::new_v4().to_string());
-        create_secure_dir(&removal_root)?;
+        if !classification.state_consistent {
+            return Err(ClientError::new(
+                "managed_state_inconsistent",
+                "Удаление остановлено: managed-files.json отсутствует или не совпадает с installed-state.json. Сначала восстановите состояние.",
+            ));
+        }
+        let removal_relative = format!("{CONTROL_DIRECTORY}/removals/{}", Uuid::new_v4());
+        let removal_root =
+            ensure_relative_directory_safe(&self.layout.marketplace_root, &removal_relative)?;
         let mut removed = Vec::new();
         let mut preserved = Vec::new();
         let mut moved = Vec::new();
@@ -851,10 +1162,20 @@ impl InstallerCore {
             .into_iter()
             .enumerate()
         {
-            if target.exists() {
-                let holding = removal_root.join(format!("state-{index}"));
-                fs::rename(target, &holding)?;
-                moved.push((target.clone(), holding));
+            match fs::symlink_metadata(target) {
+                Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                    let holding = removal_root.join(format!("state-{index}"));
+                    fs::rename(target, &holding)?;
+                    moved.push((target.clone(), holding));
+                }
+                Ok(_) => {
+                    return Err(ClientError::new(
+                        "unsafe_state_file",
+                        "State manifest заменён ссылкой или каталогом.",
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
             }
         }
         Ok(())
@@ -885,9 +1206,19 @@ impl InstallerCore {
         .enumerate()
         {
             let holding = removal_root.join(format!("old-state-{index}"));
-            if target.exists() {
-                fs::rename(target, &holding)?;
-                moved.push((target.clone(), holding));
+            match fs::symlink_metadata(target) {
+                Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                    fs::rename(target, &holding)?;
+                    moved.push((target.clone(), holding));
+                }
+                Ok(_) => {
+                    return Err(ClientError::new(
+                        "unsafe_state_file",
+                        "State manifest заменён ссылкой или каталогом.",
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
             }
             fs::rename(prepared, target)?;
         }
@@ -929,8 +1260,22 @@ impl InstallerCore {
         result: &str,
         relative_paths: &[String],
     ) -> Result<(), ClientError> {
-        create_secure_dir(&self.layout.logs_root)?;
-        let log_path = self.layout.logs_root.join("installer.jsonl");
+        let logs_root = ensure_relative_directory_safe(
+            &self.layout.marketplace_root,
+            ".lidfly-installer/logs",
+        )?;
+        let log_path = logs_root.join("installer.jsonl");
+        match fs::symlink_metadata(&log_path) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(ClientError::new(
+                    "unsafe_log_file",
+                    "Файл журнала заменён ссылкой или каталогом.",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
         let mut options = OpenOptions::new();
         options.append(true).create(true);
         #[cfg(unix)]
@@ -951,8 +1296,7 @@ impl InstallerCore {
     }
 
     pub fn logs_root(&self) -> Result<PathBuf, ClientError> {
-        create_secure_dir(&self.layout.logs_root)?;
-        Ok(self.layout.logs_root.clone())
+        ensure_relative_directory_safe(&self.layout.marketplace_root, ".lidfly-installer/logs")
     }
 
     pub fn state_consistent(&self) -> Result<bool, ClientError> {

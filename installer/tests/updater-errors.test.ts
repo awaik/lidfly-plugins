@@ -22,4 +22,16 @@ describe("mapUpdaterError", () => {
     expect(mapped.kind).toBe("invalid_signature");
     expect(mapped.message).toContain("не установлено");
   });
+
+  it("maps a missing updater configuration explicitly", () => {
+    expect(
+      mapUpdaterError(new Error("updater endpoint is not configured")),
+    ).toMatchObject({ kind: "not_configured" });
+  });
+
+  it("keeps unknown updater failures distinct", () => {
+    expect(
+      mapUpdaterError(new Error("unexpected updater response")),
+    ).toMatchObject({ kind: "unknown" });
+  });
 });
