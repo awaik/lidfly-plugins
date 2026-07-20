@@ -43,7 +43,8 @@ UPDATER_SIGNATURE_OUTPUT="$UPDATER_OUTPUT.sig"
 
 for output in "$DMG_OUTPUT" "$UPDATER_OUTPUT" "$UPDATER_SIGNATURE_OUTPUT" \
   "$ARTIFACTS_DIR/apple-evidence.json" \
-  "$ARTIFACTS_DIR/plugin-bundle-files.json"; do
+  "$ARTIFACTS_DIR/plugin-bundle-files.json" \
+  "$ARTIFACTS_DIR/plugin-bundle"; do
   if [[ -e "$output" ]]; then
     echo "Refusing to overwrite existing release output: $output" >&2
     exit 1
@@ -190,5 +191,6 @@ fs.writeFileSync(
 );
 NODE
 cp src-tauri/resources/plugin-bundle-files.json "$ARTIFACTS_DIR/plugin-bundle-files.json"
+cp -R src-tauri/resources/plugin-bundle "$ARTIFACTS_DIR/plugin-bundle"
 
 echo "Local macOS release is ready: $ARTIFACTS_DIR"

@@ -39,7 +39,7 @@ $installerName = "LidFly Codex Plugin Installer_${Version}_x64-setup.exe"
 $installer = Join-Path $artifactsDir $installerName
 $signature = "$installer.sig"
 
-foreach ($output in @($installer, $signature, (Join-Path $artifactsDir 'windows-evidence.json'), (Join-Path $artifactsDir 'plugin-bundle-files.json'))) {
+foreach ($output in @($installer, $signature, (Join-Path $artifactsDir 'windows-evidence.json'), (Join-Path $artifactsDir 'plugin-bundle-files.json'), (Join-Path $artifactsDir 'plugin-bundle'))) {
   if (Test-Path $output) {
     throw "Refusing to overwrite existing release output: $output"
   }
@@ -85,6 +85,7 @@ try {
     [System.Text.UTF8Encoding]::new($false)
   )
   Copy-Item 'src-tauri\resources\plugin-bundle-files.json' (Join-Path $artifactsDir 'plugin-bundle-files.json')
+  Copy-Item -Recurse 'src-tauri\resources\plugin-bundle' (Join-Path $artifactsDir 'plugin-bundle')
 } finally {
   Pop-Location
 }

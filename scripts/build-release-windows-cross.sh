@@ -61,7 +61,8 @@ INSTALLER_OUTPUT="$ARTIFACTS_DIR/$INSTALLER_NAME"
 SIGNATURE_OUTPUT="$INSTALLER_OUTPUT.sig"
 EVIDENCE_OUTPUT="$ARTIFACTS_DIR/windows-evidence.json"
 METADATA_OUTPUT="$ARTIFACTS_DIR/plugin-bundle-files.json"
-for output in "$INSTALLER_OUTPUT" "$SIGNATURE_OUTPUT" "$EVIDENCE_OUTPUT" "$METADATA_OUTPUT"; do
+BUNDLE_OUTPUT="$ARTIFACTS_DIR/plugin-bundle"
+for output in "$INSTALLER_OUTPUT" "$SIGNATURE_OUTPUT" "$EVIDENCE_OUTPUT" "$METADATA_OUTPUT" "$BUNDLE_OUTPUT"; do
   if [[ -e "$output" ]]; then
     echo "Refusing to overwrite existing release output: $output" >&2
     exit 1
@@ -123,5 +124,6 @@ fs.writeFileSync(
 );
 NODE
 cp src-tauri/resources/plugin-bundle-files.json "$METADATA_OUTPUT"
+cp -R src-tauri/resources/plugin-bundle "$BUNDLE_OUTPUT"
 
 echo "Local cross-built Windows release is ready: $ARTIFACTS_DIR"

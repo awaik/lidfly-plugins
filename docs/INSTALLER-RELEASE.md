@@ -211,7 +211,8 @@ npm run release:handoff -- \
 
 Verifier отклоняет отсутствующий/лишний release filename, пустой файл, неверный
 hash, несовпадающий plugin bundle, platform evidence от других bytes и любую
-невалидную updater signature.
+невалидную updater signature. Внутренний каталог `plugin-bundle/` нужен только
+для этой локальной проверки и не загружается как отдельный GitHub Release asset.
 
 ## GitHub только выкладывает
 

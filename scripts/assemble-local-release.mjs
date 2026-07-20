@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { constants } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
@@ -76,6 +76,11 @@ await writeFile(
   path.join(args.outputDir, "plugin-bundle-files.json"),
   macosMetadata,
   { encoding: "utf8", flag: "wx", mode: 0o600 },
+);
+await cp(
+  path.join(args.macosDir, "plugin-bundle"),
+  path.join(args.outputDir, "plugin-bundle"),
+  { recursive: true, errorOnExist: true, force: false },
 );
 
 const appleEvidence = await readJson(
