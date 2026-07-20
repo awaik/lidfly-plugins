@@ -74,7 +74,14 @@ jobs:
           npm run check
           npm test
           test "$(node -p "require('./package.json').version")" = "${{ steps.release.outputs.version }}"
-          test -z "$(git status --porcelain)"
+          git diff --exit-code
+          git diff --cached --exit-code
+          UNTRACKED=$(git ls-files --full-name --others --exclude-standard)
+          if [[ -n "$UNTRACKED" ]]; then
+            printf '%s\n' "$UNTRACKED"
+            test "$UNTRACKED" = "installer/src-tauri/gen/schemas/linux-schema.json"
+            cmp src-tauri/gen/schemas/desktop-schema.json src-tauri/gen/schemas/linux-schema.json
+          fi
 
       - id: bundle
         name: Record the plugin bundle hash
