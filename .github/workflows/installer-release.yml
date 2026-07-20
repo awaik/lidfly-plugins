@@ -202,6 +202,23 @@ jobs:
           cp "$BUNDLE/macos/LidFly Codex Plugin Installer.app.tar.gz" "$OUT/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz"
           cp "$BUNDLE/macos/LidFly Codex Plugin Installer.app.tar.gz.sig" "$OUT/LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz.sig"
 
+      - name: Notarize and staple the final DMG
+        working-directory: installer
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          DMG="$RUNNER_TEMP/macos-artifacts/LidFly Codex Plugin Installer_${VERSION}_universal.dmg"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --timeout 30m
+          xcrun stapler staple "$DMG"
+
       - name: Verify Developer ID, Gatekeeper, notarization, stapling and both architectures
         working-directory: installer
         env:
