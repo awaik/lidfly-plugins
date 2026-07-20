@@ -1,77 +1,147 @@
-# Релиз установщика LidFly для Codex
+# Локальный релиз установщика LidFly для Codex
 
-Этот документ описывает подготовку релизных файлов в `lidfly-plugins`. Он не разрешает commit, push, tag, GitHub Release, копирование в `direct-mcp` или production deploy. Каждое такое действие требует отдельной прямой команды пользователя.
+В этом репозитории нет активных GitHub Actions. Сборка, тесты, подпись,
+notarization и проверка выполняются на локальных компьютерах. GitHub получает
+только полностью готовые файлы через GitHub CLI и не расходует Actions minutes.
 
-## Версия и source gate
+Документ не разрешает сам по себе commit, push, создание tag, GitHub Release,
+копирование в `direct-mcp` или production deploy. Для этих действий нужна прямая
+команда пользователя.
+
+## Как теперь работает CI
+
+Главная проверка запускается локально на машине разработчика:
+
+```sh
+cd installer
+npm run ci:local
+```
+
+Команда устанавливает точные npm dependencies, дважды собирает plugin bundle и
+проверяет его детерминированность, запускает format/type/project/version/Rust
+checks, Node/Rust tests, компилирует native development application и отклоняет
+случайно отслеживаемые секреты и бинарные artifacts.
+
+Перед commit и push эта команда обязательна. Push и pull request ничего не
+запускают на GitHub. Активных файлов в `.github/workflows/` быть не должно;
+пояснение хранится в `.github/workflows.disabled/README.md` по схеме Glas.
+
+## Версия и чистый source
 
 Одна версия `X.Y.Z` должна совпадать в:
 
 - `plugins/lidfly/.codex-plugin/plugin.json`;
-- `installer/package.json` и root записи `package-lock.json`;
+- `installer/package.json` и root entry `package-lock.json`;
 - `installer/src-tauri/tauri.conf.json`;
-- `installer/src-tauri/Cargo.toml` и локальном package entry `Cargo.lock`;
-- `releases/X.Y.Z.json`, если metadata этого marketplace-релиза существует;
-- tag `vX.Y.Z` и именах artifacts.
+- `installer/src-tauri/Cargo.toml` и package entry `Cargo.lock`;
+- `releases/X.Y.Z.json`, если metadata существует;
+- tag `vX.Y.Z` и именах release files.
 
-Проверка:
+Платформы собираются из одного и того же уже согласованного tag. Если основной
+checkout содержит пользовательские изменения, release выполняется в отдельном
+чистом worktree, не затрагивая их:
+
+```sh
+RELEASE_ROOT="$(mktemp -d)"
+RELEASE_WORKTREE="$RELEASE_ROOT/source"
+git worktree add --detach "$RELEASE_WORKTREE" vX.Y.Z
+cd "$RELEASE_WORKTREE/installer"
+npm run ci:local
+```
+
+## Локальные ключи
+
+Updater keypair относится только к `LidFly Codex Plugin Installer`. Local release
+не читает GitHub secrets: private key и password не добавляются в Git, artifacts
+или shell history. Public key не является секретом, но обе платформы обязаны
+использовать один и тот же файл.
+
+Рекомендуемые защищённые локальные файлы:
+
+```text
+$USERPROFILE/.tauri/lidfly-codex-installer-updater.key       # Windows
+$USERPROFILE/.tauri/lidfly-codex-installer-updater.key.pub
+
+локальный каталог ~/.tauri с правами 600                   # macOS
+lidfly-codex-installer-updater.key
+lidfly-codex-installer-updater.key.pub
+```
+
+На macOS password может лежать в login Keychain как generic password:
+
+```text
+service: ru.lidfly.codex-plugin-installer.updater-key
+account: имя локального пользователя
+```
+
+Скрипт сначала читает `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` из environment, а
+при его отсутствии получает password из этого Keychain item без печати.
+
+Для Apple notarization используется сохранённый keychain profile
+`glas-notary`. Поэтому `APPLE_ID` и app-specific password не нужно экспортировать
+или хранить в репозитории: `notarytool` читает их из Keychain. Доступ проверяется
+без раскрытия значений:
+
+```sh
+xcrun notarytool history --keychain-profile glas-notary
+security find-identity -v -p codesigning
+```
+
+Windows следует схеме Glas: EXE намеренно не имеет Authenticode. Переменные
+`WINDOWS_CERTIFICATE*` не нужны. Detached Tauri updater signature защищает
+обновление, но первоначально скачанный EXE остаётся для SmartScreen приложением
+неизвестного издателя.
+
+## Локальная сборка macOS
+
+На Mac должны быть Node 22, Rust stable, targets `aarch64-apple-darwin` и
+`x86_64-apple-darwin`, Developer ID Application certificate и профиль
+`glas-notary`.
 
 ```sh
 cd installer
-npm run version:check
+export APPLE_SIGNING_IDENTITY='<SHA-1 Developer ID Application certificate>'
+export APPLE_TEAM_ID='<Apple team id>'
+export NOTARYTOOL_PROFILE='glas-notary'
+export TAURI_SIGNING_PRIVATE_KEY_PATH='/protected/path/lidfly-codex-installer-updater.key'
+export TAURI_UPDATER_PUBLIC_KEY_PATH='/protected/path/lidfly-codex-installer-updater.key.pub'
+
+npm run release:macos:local -- X.Y.Z /absolute/output/X.Y.Z/macos
 ```
 
-Release workflow принимает только точный clean tag commit. Bundle собирается один раз в `prepare`, а platform jobs получают одинаковый artifact и сравнивают `plugin_bundle_sha256`.
+Скрипт локально:
 
-## Production updater keypair
+1. собирает universal app с `x86_64` и `arm64`;
+2. подписывает Developer ID и включает hardened runtime;
+3. отправляет app в Apple через локальный `glas-notary`, затем stapling;
+4. заново создаёт updater archive из stapled app и подписывает его updater key;
+5. создаёт, подписывает, notarizes и staples финальный DMG;
+6. проверяет `codesign`, Gatekeeper, stapling, обе архитектуры и updater signature;
+7. сохраняет три macOS файла, `apple-evidence.json` и bundle metadata.
 
-Создайте отдельный keypair только для `LidFly Codex Plugin Installer` в защищённом окружении релиз-инженера:
+## Локальная сборка Windows
 
-```sh
+Windows installer собирается на локальном Windows x64 компьютере или локальной
+Windows VM. На macOS нельзя подменять MSVC release сборкой GNU target. Нужны
+Node 22, Rust stable, `x86_64-pc-windows-msvc`, Visual Studio Build Tools и NSIS
+prerequisites Tauri.
+
+В PowerShell из чистого checkout того же tag:
+
+```powershell
 cd installer
-umask 077
-npx tauri signer generate \
-  --write-keys /secure/path/lidfly-codex-installer-updater.key \
-  --password '<strong unique password>'
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = 'C:\protected\lidfly-codex-installer-updater.key'
+$env:TAURI_UPDATER_PUBLIC_KEY_PATH = 'C:\protected\lidfly-codex-installer-updater.key.pub'
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = '<read from local secret storage>'
+
+npm run ci:local
+npm run release:windows:local -- -Version X.Y.Z -ArtifactsDir C:\release\X.Y.Z\windows
 ```
 
-Не используйте key Glas или другого приложения. Private key и password не добавляются в Git, artifacts или cache. Значение созданного `.pub` добавляется как repository variable `TAURI_UPDATER_PUBLIC_KEY`; workflow валидирует его и внедряет только в release Tauri config. Base `tauri.conf.json` оставляет `pubkey` пустым для development builds.
-
-Ротация key требует отдельного плана совместимости: уже установленные приложения доверяют ключу, с которым они были собраны.
-
-## GitHub Actions secrets и variables
-
-Secrets без значений:
-
-```text
-APPLE_CERTIFICATE
-APPLE_CERTIFICATE_PASSWORD
-APPLE_SIGNING_IDENTITY
-APPLE_ID
-APPLE_PASSWORD
-APPLE_TEAM_ID
-
-TAURI_UPDATER_PRIVATE_KEY
-TAURI_UPDATER_PRIVATE_KEY_PASSWORD
-```
-
-Repository variables:
-
-```text
-TAURI_UPDATER_PUBLIC_KEY
-```
-
-`APPLE_CERTIFICATE` — base64 архив сертификата с private key. `TAURI_UPDATER_PRIVATE_KEY` и его password используются обоими platform jobs для создания detached `.sig`; это отдельная пара LidFly, а не секреты Glas. Workflow не доступен pull requests, поэтому signing secrets не попадают в fork jobs.
-
-Windows следует принятой для Glas схеме: EXE намеренно не имеет Authenticode, поэтому `WINDOWS_CERTIFICATE*` и timestamp URL не нужны. Tauri updater signature подтверждает целостность обновления внутри уже установленного приложения, но не делает первоначально скачанный EXE доверенным издателем Windows. На чистом компьютере ожидаемо предупреждение Microsoft Defender SmartScreen о неизвестном издателе.
-
-## Запуск workflow
-
-Поддерживаются:
-
-- push уже согласованного tag `vX.Y.Z`;
-- manual dispatch с `version: X.Y.Z`, только если такой tag уже существует и checkout совпадает с ним.
-
-Workflow не создаёт GitHub Release и ничего не публикует на `lidfly.ru`. Результат — один защищённый Actions artifact `lidfly-installer-X.Y.Z-handoff`.
+Скрипт собирает NSIS для `x86_64-pc-windows-msvc`, проверяет AMD64 application
+payload, требует `Get-AuthenticodeSignature = NotSigned`, проверяет updater
+signature и сохраняет Windows evidence. Mac и Windows bundle metadata должны
+совпасть byte-for-byte.
 
 ## Обязательные пять файлов
 
@@ -85,88 +155,74 @@ LidFly Codex Plugin Installer_1.0.0_x64-setup.exe
 LidFly Codex Plugin Installer_1.0.0_x64-setup.exe.sig
 ```
 
-Verifier отклоняет пропуск, пустой файл и любой дополнительный filename с другим suffix/build number/alias.
+## Сборка общего handoff
 
-Дополнительные handoff-файлы:
-
-```text
-SHA256SUMS.txt
-plugin-bundle-files.json
-release-handoff.json
-```
-
-## macOS job
-
-Job собирает `universal-apple-darwin`, импортирует отдельный Developer ID Application certificate, включает hardened runtime, выполняет notarization и проверяет stapling DMG. Проверяются:
-
-```sh
-codesign --verify --deep --strict --verbose=2 <app>
-codesign --verify --strict --verbose=2 <dmg>
-spctl --assess --type execute --verbose=4 <app>
-xcrun stapler validate <dmg>
-lipo -archs <app binary>
-```
-
-`lipo` обязан показать `x86_64` и `arm64`. Эти проверки повторяются для app в build output, app из updater `.app.tar.gz` и app внутри DMG.
-
-## Windows job
-
-NSIS настроен как per-user installer для `x86_64-pc-windows-msvc`. У основного application binary, который упаковывает NSIS, отдельно читается PE header: machine обязан быть `AMD64` (`0x8664`). Сам NSIS bootstrapper может оставаться PE32 — это не меняет архитектуру установленного приложения. После build `Get-AuthenticodeSignature` обязан вернуть `NotSigned`: так workflow явно фиксирует выбранную схему Glas и не выдаёт updater signature за Authenticode.
-
-Порядок обязателен:
-
-1. Tauri собирает финальный NSIS EXE.
-2. Tauri signer создаёт detached `.sig` по финальному EXE.
-3. Workflow подтверждает отсутствие Authenticode и архитектуру application payload.
-4. Отдельный Rust verifier проверяет `.sig` по финальным байтам EXE.
-
-## Локальная проверка готового handoff
-
-На каталоге готовых release artifacts:
+Каталоги с двух локальных машин объединяются в новый пустой каталог:
 
 ```sh
 cd installer
-TAURI_UPDATER_PUBLIC_KEY='<public key>' npm run release:verify -- \
+npm run release:assemble -- \
   --version X.Y.Z \
-  --artifacts-dir /path/to/artifacts \
-  --evidence /path/to/signing-evidence.json
+  --macos-dir /absolute/output/X.Y.Z/macos \
+  --windows-dir /absolute/output/X.Y.Z/windows \
+  --output-dir /absolute/output/X.Y.Z/final
 ```
 
-`release:handoff` дополнительно требует clean checkout, существующий tag на текущем commit и формирует `SHA256SUMS.txt`/`release-handoff.json`:
+Затем из чистого tagged worktree выполняется строгая проверка и создаются
+`SHA256SUMS.txt` и `release-handoff.json`:
 
 ```sh
-TAURI_UPDATER_PUBLIC_KEY='<public key>' npm run release:handoff -- \
+export TAURI_UPDATER_PUBLIC_KEY="$(< /protected/path/lidfly-codex-installer-updater.key.pub)"
+npm run release:verify -- \
+  --version X.Y.Z \
+  --artifacts-dir /absolute/output/X.Y.Z/final \
+  --evidence /absolute/output/X.Y.Z/final/signing-evidence.json
+
+npm run release:handoff -- \
   --version X.Y.Z \
   --tag vX.Y.Z \
-  --artifacts-dir /path/to/artifacts \
-  --evidence /path/to/signing-evidence.json
+  --artifacts-dir /absolute/output/X.Y.Z/final \
+  --evidence /absolute/output/X.Y.Z/final/signing-evidence.json
 ```
 
-Platform evidence содержит hashes реально проверенных payload, поэтому устаревший JSON не принимается.
+Verifier отклоняет отсутствующий/лишний release filename, пустой файл, неверный
+hash, несовпадающий plugin bundle, platform evidence от других bytes и любую
+невалидную updater signature.
 
-## Handoff в direct-mcp
+## GitHub только выкладывает
 
-После отдельного разрешения передаются пять файлов, `plugin_bundle_sha256` и handoff metadata. Дальнейшие действия выполняются строго по соседнему `direct-mcp/docs/RUNBOOK-CODEX-PLUGIN-RELEASE.md`: подготовка guarded `latest.json`, атомарная публикация и stable URL smoke.
+После отдельного разрешения готовые файлы загружаются напрямую через GitHub API.
+Это не запускает runner:
 
-Нельзя копировать Tauri source, signing workflow или embedded bundle в `direct-mcp`.
+```sh
+FINAL_DIR='/absolute/output/X.Y.Z/final'
+gh release create vX.Y.Z \
+  --repo awaik/lidfly-plugins \
+  --verify-tag \
+  --title 'LidFly Codex Plugin Installer X.Y.Z' \
+  --notes 'Release notes' \
+  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_universal.dmg" \
+  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_universal.app.tar.gz" \
+  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_universal.app.tar.gz.sig" \
+  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_x64-setup.exe" \
+  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_x64-setup.exe.sig" \
+  "$FINAL_DIR/SHA256SUMS.txt" \
+  "$FINAL_DIR/plugin-bundle-files.json" \
+  "$FINAL_DIR/release-handoff.json"
+```
 
-## Rollback
+GitHub Release не запускает сборку и не исправляет artifacts. Если проверка
+провалилась, локально выпускается исправленная новая версия; опубликованные tag
+и versioned files не переписываются.
 
-До завершения smoke сохраняйте предыдущий полный подписанный release. Rollback на стороне раздачи возвращает предыдущий `latest.json` и каталог artifacts атомарно. Опубликованный tag и versioned файлы не переписываются. Исправление выпускается новой semver-версией.
+## Handoff в direct-mcp и smoke
 
-Installer updater не смешивает версии: после перезапуска приложение синхронизирует embedded plugin bundle той же версии. Локально изменённые файлы блокируют update bundle до явного Repair с backup; автоматический downgrade запрещён.
+После отдельного разрешения дальнейшие действия выполняются по
+`../direct-mcp/docs/RUNBOOK-CODEX-PLUGIN-RELEASE.md`: guarded `latest.json`,
+атомарная публикация и smoke stable URLs. Tauri source, signing scripts и
+embedded bundle в `direct-mcp` не копируются.
 
-## Ручной smoke перед публичным гайдом
-
-Подписанные artifacts считаются непроверенными, пока на чистых профилях macOS и Windows x64 без Codex CLI не выполнены:
-
-1. проверка platform policy: Developer ID/notarization/stapling на macOS, `NotSigned` и валидная updater `.sig` на Windows;
-2. Prepare → verify → open `codex://`;
-3. штатная установка LidFly в Codex и OAuth по email;
-4. полный перезапуск Codex и новый чат;
-5. `subscription_status` и один read-only запрос;
-6. повторный Install, Repair, updater и Remove;
-7. проверка сохранения modified и unknown файлов;
-8. Windows path с пробелами и non-ASCII пользователем.
-
-README нельзя переключать со статуса «установщик готовится» до публикации полного проверенного набора и успешного smoke обеих ОС.
+До публичного релиза обязательны чистые macOS и Windows profiles: platform
+policy, Prepare → verify → `codex://`, установка плагина, OAuth, полный restart,
+`subscription_status`, read-only MCP call, Repair/updater/Remove, сохранение
+modified/unknown files и Windows path с пробелами/non-ASCII пользователем.
