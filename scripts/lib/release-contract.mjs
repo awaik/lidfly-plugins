@@ -79,6 +79,8 @@ function parseEvidence(evidence, version, artifacts) {
     apple?.notarized !== true ||
     apple?.stapled !== true ||
     apple?.gatekeeper_accepted !== true ||
+    !/^[A-Z0-9]{10}$/u.test(apple?.team_id ?? "") ||
+    !/^[a-f0-9]{40}$/u.test(apple?.signing_identity_sha1 ?? "") ||
     apple?.dmg_sha256 !== macosDmg.sha256 ||
     apple?.updater_sha256 !== macosUpdater.sha256 ||
     JSON.stringify([...apple.architectures].sort()) !==
@@ -93,6 +95,8 @@ function parseEvidence(evidence, version, artifacts) {
     windowsEvidence?.authenticode_status !== "Valid" ||
     windowsEvidence?.digest_algorithm?.toLowerCase() !== "sha256" ||
     windowsEvidence?.timestamped !== true ||
+    windowsEvidence?.architecture !== "x86_64" ||
+    !/^[a-f0-9]{40}$/u.test(windowsEvidence?.certificate_thumbprint ?? "") ||
     windowsEvidence?.installer_sha256 !== windows.sha256 ||
     windowsEvidence?.updater_signature_after_authenticode !== true
   ) {

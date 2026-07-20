@@ -76,6 +76,8 @@ async function signingEvidence(directory) {
       notarized: true,
       stapled: true,
       gatekeeper_accepted: true,
+      team_id: "HV66937AWS",
+      signing_identity_sha1: "a".repeat(40),
       architectures: ["x86_64", "arm64"],
       dmg_sha256: hashes.get(names[0]),
       updater_sha256: hashes.get(names[1]),
@@ -84,6 +86,8 @@ async function signingEvidence(directory) {
       authenticode_status: "Valid",
       digest_algorithm: "sha256",
       timestamped: true,
+      architecture: "x86_64",
+      certificate_thumbprint: "b".repeat(40),
       installer_sha256: hashes.get(names[3]),
       updater_signature_after_authenticode: true,
     },
@@ -141,6 +145,53 @@ describe("release artifact contract", () => {
       "LidFly Codex Plugin Installer_1.0.0_x64-setup.exe",
       "LidFly Codex Plugin Installer_1.0.0_x64-setup.exe.sig",
     ]);
+  });
+
+  it("writes Windows signing config only for a SHA-1 certificate thumbprint", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "lidfly-release-config-test-"),
+    );
+    const output = path.join(directory, "tauri-release.json");
+    const environment = {
+      ...process.env,
+      LIDFLY_RELEASE_PLATFORM: "windows",
+      TAURI_UPDATER_PUBLIC_KEY: Buffer.from(
+        "untrusted comment: test public key\nRWQtest-public-key",
+      ).toString("base64"),
+      WINDOWS_CERTIFICATE_THUMBPRINT: "a".repeat(40),
+      WINDOWS_TIMESTAMP_URL: "http://timestamp.digicert.com",
+    };
+    await execFileAsync(
+      process.execPath,
+      [
+        path.join(repositoryRoot, "scripts/write-release-tauri-config.mjs"),
+        output,
+      ],
+      { cwd: repositoryRoot, env: environment },
+    );
+    const config = JSON.parse(await readFile(output, "utf8"));
+    expect(config.bundle.windows).toMatchObject({
+      certificateThumbprint: "a".repeat(40),
+      digestAlgorithm: "sha256",
+      timestampUrl: "http://timestamp.digicert.com",
+    });
+
+    await expect(
+      execFileAsync(
+        process.execPath,
+        [
+          path.join(repositoryRoot, "scripts/write-release-tauri-config.mjs"),
+          path.join(directory, "invalid.json"),
+        ],
+        {
+          cwd: repositoryRoot,
+          env: {
+            ...environment,
+            WINDOWS_CERTIFICATE_THUMBPRINT: "b".repeat(64),
+          },
+        },
+      ),
+    ).rejects.toThrow(/thumbprint is invalid/iu);
   });
 
   it("accepts a complete local fixture when platform/signature checks are explicitly skipped", async () => {
@@ -322,6 +373,20 @@ describe("release artifact contract", () => {
         skipUpdaterSignatures: true,
       }),
     ).rejects.toThrow(/Apple signing/iu);
+
+    evidence.apple.stapled = true;
+    evidence.windows.architecture = "arm64";
+    await writeFile(evidencePath, JSON.stringify(evidence));
+    await expect(
+      verifyReleaseArtifacts({
+        version: "1.0.0",
+        artifactsDir: directory,
+        pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
+        repositoryRoot,
+        evidencePath,
+        skipUpdaterSignatures: true,
+      }),
+    ).rejects.toThrow(/Authenticode/iu);
   });
 
   it("rejects a built bundle whose bytes no longer match its metadata", async () => {

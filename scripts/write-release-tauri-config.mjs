@@ -36,7 +36,7 @@ const config = {
 if (process.env.LIDFLY_RELEASE_PLATFORM === "windows") {
   const certificateThumbprint =
     process.env.WINDOWS_CERTIFICATE_THUMBPRINT?.replace(/\s/gu, "");
-  if (!/^[A-Fa-f0-9]{40,64}$/.test(certificateThumbprint ?? "")) {
+  if (!/^[A-Fa-f0-9]{40}$/.test(certificateThumbprint ?? "")) {
     throw new Error("WINDOWS_CERTIFICATE_THUMBPRINT is invalid");
   }
   const timestampUrl = process.env.WINDOWS_TIMESTAMP_URL;
