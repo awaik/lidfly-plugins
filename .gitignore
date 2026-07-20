@@ -1,0 +1,7 @@
+.DS_Store
+**/.DS_Store
+
+# Local agent instructions. CLAUDE.md is a symlink to AGENTS.md.
+/AGENTS.md
+/CLAUDE.md
+/.claude/

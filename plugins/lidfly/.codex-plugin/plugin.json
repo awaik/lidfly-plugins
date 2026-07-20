@@ -1,0 +1,45 @@
+{
+  "name": "lidfly",
+  "version": "1.0.0",
+  "description": "Работа с рекламой, аналитикой, сайтами и контентом LidFly через защищённый MCP-сервер.",
+  "author": {
+    "name": "LidFly",
+    "email": "info@lidfly.ru",
+    "url": "https://lidfly.ru"
+  },
+  "homepage": "https://github.com/awaik/lidfly-plugins",
+  "repository": "https://github.com/awaik/lidfly-plugins",
+  "license": "MIT",
+  "keywords": [
+    "lidfly",
+    "mcp",
+    "advertising",
+    "analytics",
+    "productivity"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "LidFly",
+    "shortDescription": "Реклама, аналитика и сайты через LidFly.",
+    "longDescription": "Подключает Codex к LidFly по HTTPS. После установки войдите по email, чтобы работать с рекламой, аналитикой, сайтами и контентом в новом чате.",
+    "developerName": "LidFly",
+    "category": "Data & Analytics",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://lidfly.ru",
+    "privacyPolicyURL": "https://lidfly.ru/privacy",
+    "termsOfServiceURL": "https://lidfly.ru/offer",
+    "brandColor": "#7000FF",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/logo.svg",
+    "logoDark": "./assets/logo-dark.svg",
+    "defaultPrompt": [
+      "Проверь статус моей подписки LidFly",
+      "Покажи доступные аккаунты и проекты",
+      "Помоги проанализировать рекламу"
+    ],
+    "screenshots": []
+  }
+}

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LidFly">
+  <defs>
+    <linearGradient id="wing-icon" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF9047"/>
+      <stop offset="0.38" stop-color="#FE146C"/>
+      <stop offset="1" stop-color="#7000FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="#130020"/>
+  <path d="M31.7 29.7C23 13.4 11.2 11.1 8.5 18.5c-2.5 6.9 7.2 15.4 23.2 15.2V29.7Z" fill="url(#wing-icon)"/>
+  <path d="M32.3 29.7C41 13.4 52.8 11.1 55.5 18.5c2.5 6.9-7.2 15.4-23.2 15.2V29.7Z" fill="url(#wing-icon)"/>
+  <path d="M31.7 35.1C20.5 35.8 14 43.8 18.5 49.4c4.2 5.1 12.4-.8 13.2-10.6v-3.7Z" fill="url(#wing-icon)"/>
+  <path d="M32.3 35.1C43.5 35.8 50 43.8 45.5 49.4c-4.2 5.1-12.4-.8-13.2-10.6v-3.7Z" fill="url(#wing-icon)"/>
+  <circle cx="32" cy="32" r="3.5" fill="#FFFFFF"/>
+</svg>

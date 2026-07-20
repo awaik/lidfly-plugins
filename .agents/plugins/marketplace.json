@@ -1,0 +1,20 @@
+{
+  "name": "lidfly",
+  "interface": {
+    "displayName": "LidFly"
+  },
+  "plugins": [
+    {
+      "name": "lidfly",
+      "source": {
+        "source": "local",
+        "path": "./plugins/lidfly"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Data & Analytics"
+    }
+  ]
+}

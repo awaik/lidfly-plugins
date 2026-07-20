@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="LidFly">
+  <defs>
+    <linearGradient id="wing-logo" x1="8" y1="10" x2="86" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF9047"/>
+      <stop offset="0.38" stop-color="#FE146C"/>
+      <stop offset="1" stop-color="#7000FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="96" rx="24" fill="#FFFFFF"/>
+  <g transform="translate(8 8)">
+    <rect width="80" height="80" rx="20" fill="#130020"/>
+    <path d="M39.6 37.1C28.8 16.8 14 13.9 10.6 23.1 7.5 31.8 19.7 42.4 39.6 42.1v-5Z" fill="url(#wing-logo)"/>
+    <path d="M40.4 37.1C51.2 16.8 66 13.9 69.4 23.1c3.1 8.7-9.1 19.3-29 19v-5Z" fill="url(#wing-logo)"/>
+    <path d="M39.6 43.9c-14 .9-22.1 10.9-16.5 17.9 5.2 6.4 15.5-1 16.5-13.3v-4.6Z" fill="url(#wing-logo)"/>
+    <path d="M40.4 43.9c14 .9 22.1 10.9 16.5 17.9-5.2 6.4-15.5-1-16.5-13.3v-4.6Z" fill="url(#wing-logo)"/>
+    <circle cx="40" cy="40" r="4.4" fill="#FFFFFF"/>
+  </g>
+  <text x="108" y="61" fill="#130020" font-family="Inter, Arial, sans-serif" font-size="46" font-weight="700" letter-spacing="-1.5">LidFly</text>
+</svg>
