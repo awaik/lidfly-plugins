@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "plugin": {
     "name": "lidfly",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "manifestPath": "./plugins/lidfly/.codex-plugin/plugin.json",
     "mcpUrl": "https://lidfly.ru/mcp/v3"
   },
@@ -14,26 +14,26 @@
   },
   "publication": {
     "status": "published",
-    "tag": "v1.0.0",
-    "commit": "e1b6734d991b6240bf63eeaceaa705d7e7c15d2e",
-    "publishedAt": "2026-07-20T20:36:48Z"
+    "tag": "v1.0.1",
+    "commit": "b59cb405f59553927386adca57afd208abdd22c4",
+    "publishedAt": "2026-07-23T11:58:14Z"
   },
   "installers": {
     "status": "published",
     "artifacts": [
       {
         "platform": "macos-universal",
-        "filename": "LidFly.Codex.Plugin.Installer_1.0.0_universal.dmg",
-        "size": 6790875,
-        "sha256": "492c60ffa5be736267bd88231ba07b83384ff60b00504438c5598ec5a3371dc6",
-        "url": "https://github.com/awaik/lidfly-plugins/releases/download/v1.0.0/LidFly.Codex.Plugin.Installer_1.0.0_universal.dmg"
+        "filename": "LidFly.Codex.Plugin.Installer_1.0.1_universal.dmg",
+        "url": "https://github.com/awaik/lidfly-plugins/releases/download/v1.0.1/LidFly.Codex.Plugin.Installer_1.0.1_universal.dmg",
+        "size": 6786451,
+        "sha256": "52a7f3f3b89358873f553d41a59ae42faca2816bc15f9cbca268730cf1bc58f2"
       },
       {
         "platform": "windows-x86_64",
-        "filename": "LidFly.Codex.Plugin.Installer_1.0.0_x64-setup.exe",
-        "size": 2400801,
-        "sha256": "b805c710b547db8fe14a000f575ff565a317c7ef7b608faf64c3813d9139d1b5",
-        "url": "https://github.com/awaik/lidfly-plugins/releases/download/v1.0.0/LidFly.Codex.Plugin.Installer_1.0.0_x64-setup.exe"
+        "filename": "LidFly.Codex.Plugin.Installer_1.0.1_x64-setup.exe",
+        "url": "https://github.com/awaik/lidfly-plugins/releases/download/v1.0.1/LidFly.Codex.Plugin.Installer_1.0.1_x64-setup.exe",
+        "size": 2401811,
+        "sha256": "9d7e8afa26cdac1f6e9da5a981ed465fee4b04803ccd513e5c4f7e077de42463"
       }
     ]
   }
