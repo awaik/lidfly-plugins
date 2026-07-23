@@ -169,14 +169,14 @@ npm run release:windows:cross-local -- X.Y.Z /absolute/output/X.Y.Z/windows
 
 ## Обязательные пять файлов
 
-Для `1.0.0`:
+Для версии `X.Y.Z`:
 
 ```text
-LidFly Codex Plugin Installer_1.0.0_universal.dmg
-LidFly Codex Plugin Installer_1.0.0_universal.app.tar.gz
-LidFly Codex Plugin Installer_1.0.0_universal.app.tar.gz.sig
-LidFly Codex Plugin Installer_1.0.0_x64-setup.exe
-LidFly Codex Plugin Installer_1.0.0_x64-setup.exe.sig
+LidFly Codex Plugin Installer_X.Y.Z_universal.dmg
+LidFly Codex Plugin Installer_X.Y.Z_universal.app.tar.gz
+LidFly Codex Plugin Installer_X.Y.Z_universal.app.tar.gz.sig
+LidFly Codex Plugin Installer_X.Y.Z_x64-setup.exe
+LidFly Codex Plugin Installer_X.Y.Z_x64-setup.exe.sig
 ```
 
 ## Сборка общего handoff

@@ -43,7 +43,7 @@ pub fn build_codex_plugin_uri(marketplace_manifest: &Path) -> Result<Url, Client
         ));
     }
     let encoded = utf8_percent_encode(&path, QUERY_VALUE_ENCODE_SET).to_string();
-    let mut url = Url::parse("codex://plugins/").map_err(|error| {
+    let mut url = Url::parse("codex://plugins/lidfly").map_err(|error| {
         ClientError::new(
             "invalid_codex_uri",
             format!("Не удалось собрать Codex URI: {error}"),
@@ -67,7 +67,7 @@ mod tests {
         .to_string();
         assert_eq!(
             uri,
-            "codex://plugins/?marketplacePath=%2FUsers%2F%D0%98%D0%B2%D0%B0%D0%BD%20%D0%9F%D0%B5%D1%82%D1%80%D0%BE%D0%B2%2FLibrary%2FApplication%20Support%2FLidFly%2Fmarketplace.json"
+            "codex://plugins/lidfly?marketplacePath=%2FUsers%2F%D0%98%D0%B2%D0%B0%D0%BD%20%D0%9F%D0%B5%D1%82%D1%80%D0%BE%D0%B2%2FLibrary%2FApplication%20Support%2FLidFly%2Fmarketplace.json"
         );
     }
 

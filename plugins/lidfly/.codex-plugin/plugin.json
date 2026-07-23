@@ -1,6 +1,6 @@
 {
   "name": "lidfly",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Работа с рекламой, аналитикой, сайтами и контентом LidFly через защищённый MCP-сервер.",
   "author": {
     "name": "LidFly",

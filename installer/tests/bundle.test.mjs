@@ -35,6 +35,10 @@ const tauriCli = path.join(
   repositoryRoot,
   "installer/node_modules/@tauri-apps/cli/tauri.js",
 );
+const releaseVersion = JSON.parse(
+  await readFile(path.join(repositoryRoot, "installer/package.json"), "utf8"),
+).version;
+const mismatchedVersion = "9.9.9";
 
 async function fakeReleaseDirectory() {
   const directory = await mkdtemp(
@@ -51,14 +55,14 @@ async function fakeReleaseDirectory() {
     path.join(resourcesRoot, "plugin-bundle-files.json"),
     path.join(directory, "plugin-bundle-files.json"),
   );
-  for (const filename of releaseFilenames("1.0.0")) {
+  for (const filename of releaseFilenames(releaseVersion)) {
     await writeFile(path.join(directory, filename), `test ${filename}`);
   }
   return directory;
 }
 
 async function signingEvidence(directory) {
-  const names = releaseFilenames("1.0.0");
+  const names = releaseFilenames(releaseVersion);
   const hashes = new Map(
     await Promise.all(
       names.map(async (filename) => [
@@ -69,7 +73,7 @@ async function signingEvidence(directory) {
   );
   return {
     schema_version: 1,
-    release_version: "1.0.0",
+    release_version: releaseVersion,
     apple: {
       developer_id: true,
       hardened_runtime: true,
@@ -136,12 +140,12 @@ describe("plugin bundle contract", () => {
 
 describe("release artifact contract", () => {
   it("requires exactly the five versioned filenames", () => {
-    expect(releaseFilenames("1.0.0")).toEqual([
-      "LidFly Codex Plugin Installer_1.0.0_universal.dmg",
-      "LidFly Codex Plugin Installer_1.0.0_universal.app.tar.gz",
-      "LidFly Codex Plugin Installer_1.0.0_universal.app.tar.gz.sig",
-      "LidFly Codex Plugin Installer_1.0.0_x64-setup.exe",
-      "LidFly Codex Plugin Installer_1.0.0_x64-setup.exe.sig",
+    expect(releaseFilenames("1.2.3")).toEqual([
+      "LidFly Codex Plugin Installer_1.2.3_universal.dmg",
+      "LidFly Codex Plugin Installer_1.2.3_universal.app.tar.gz",
+      "LidFly Codex Plugin Installer_1.2.3_universal.app.tar.gz.sig",
+      "LidFly Codex Plugin Installer_1.2.3_x64-setup.exe",
+      "LidFly Codex Plugin Installer_1.2.3_x64-setup.exe.sig",
     ]);
   });
 
@@ -176,7 +180,7 @@ describe("release artifact contract", () => {
   it("accepts a complete local fixture when platform/signature checks are explicitly skipped", async () => {
     const directory = await fakeReleaseDirectory();
     const result = await verifyReleaseArtifacts({
-      version: "1.0.0",
+      version: releaseVersion,
       artifactsDir: directory,
       pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
       repositoryRoot,
@@ -188,13 +192,13 @@ describe("release artifact contract", () => {
 
   it("fails closed when an artifact is missing or an unexpected alias exists", async () => {
     const missingDirectory = await fakeReleaseDirectory();
-    const required = releaseFilenames("1.0.0");
+    const required = releaseFilenames(releaseVersion);
     await import("node:fs/promises").then(({ unlink }) =>
       unlink(path.join(missingDirectory, required[0])),
     );
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: missingDirectory,
         pluginMetadataPath: path.join(
           missingDirectory,
@@ -210,13 +214,13 @@ describe("release artifact contract", () => {
     await writeFile(
       path.join(
         aliasedDirectory,
-        "LidFly Codex Plugin Installer_1.0.0_universal (1).dmg",
+        `LidFly Codex Plugin Installer_${releaseVersion}_universal (1).dmg`,
       ),
       "alias",
     );
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: aliasedDirectory,
         pluginMetadataPath: path.join(
           aliasedDirectory,
@@ -231,10 +235,13 @@ describe("release artifact contract", () => {
 
   it("fails closed when an updater signature file is empty", async () => {
     const directory = await fakeReleaseDirectory();
-    await writeFile(path.join(directory, releaseFilenames("1.0.0")[2]), "");
+    await writeFile(
+      path.join(directory, releaseFilenames(releaseVersion)[2]),
+      "",
+    );
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
@@ -264,7 +271,7 @@ describe("release artifact contract", () => {
       ],
       { cwd: repositoryRoot },
     );
-    const names = releaseFilenames("1.0.0");
+    const names = releaseFilenames(releaseVersion);
     for (const artifactIndex of [1, 3]) {
       const artifact = path.join(directory, names[artifactIndex]);
       await unlink(`${artifact}.sig`);
@@ -288,19 +295,19 @@ describe("release artifact contract", () => {
     ).trim();
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
         updaterPublicKey,
         skipPlatformSignatures: true,
       }),
-    ).resolves.toMatchObject({ version: "1.0.0" });
+    ).resolves.toMatchObject({ version: releaseVersion });
 
     await appendFile(path.join(directory, names[3]), "changed after signing");
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
@@ -317,20 +324,20 @@ describe("release artifact contract", () => {
     await writeFile(evidencePath, JSON.stringify(evidence));
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
         evidencePath,
         skipUpdaterSignatures: true,
       }),
-    ).resolves.toMatchObject({ version: "1.0.0" });
+    ).resolves.toMatchObject({ version: releaseVersion });
 
     evidence.windows.authenticode_status = "Valid";
     await writeFile(evidencePath, JSON.stringify(evidence));
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
@@ -344,7 +351,7 @@ describe("release artifact contract", () => {
     await writeFile(evidencePath, JSON.stringify(evidence));
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
@@ -358,7 +365,7 @@ describe("release artifact contract", () => {
     await writeFile(evidencePath, JSON.stringify(evidence));
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
@@ -372,7 +379,7 @@ describe("release artifact contract", () => {
     await writeFile(evidencePath, JSON.stringify(evidence));
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
@@ -390,7 +397,7 @@ describe("release artifact contract", () => {
     );
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.0",
+        version: releaseVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,
@@ -402,15 +409,15 @@ describe("release artifact contract", () => {
 
   it("rejects artifact names for one version paired with another plugin version", async () => {
     const directory = await fakeReleaseDirectory();
-    for (const [oldName, newName] of releaseFilenames("1.0.0").map(
-      (oldName, index) => [oldName, releaseFilenames("1.0.1")[index]],
+    for (const [oldName, newName] of releaseFilenames(releaseVersion).map(
+      (oldName, index) => [oldName, releaseFilenames(mismatchedVersion)[index]],
     )) {
       await cp(path.join(directory, oldName), path.join(directory, newName));
       await unlink(path.join(directory, oldName));
     }
     await expect(
       verifyReleaseArtifacts({
-        version: "1.0.1",
+        version: mismatchedVersion,
         artifactsDir: directory,
         pluginMetadataPath: path.join(directory, "plugin-bundle-files.json"),
         repositoryRoot,

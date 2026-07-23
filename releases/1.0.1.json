@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "plugin": {
+    "name": "lidfly",
+    "version": "1.0.1",
+    "manifestPath": "./plugins/lidfly/.codex-plugin/plugin.json",
+    "mcpUrl": "https://lidfly.ru/mcp/v3"
+  },
+  "marketplace": {
+    "name": "lidfly",
+    "repository": "https://github.com/awaik/lidfly-plugins",
+    "catalogPath": "./.agents/plugins/marketplace.json",
+    "pluginPath": "./plugins/lidfly"
+  },
+  "publication": {
+    "status": "draft",
+    "tag": "v1.0.1",
+    "commit": null,
+    "publishedAt": null
+  },
+  "installers": {
+    "status": "unpublished",
+    "artifacts": []
+  }
+}

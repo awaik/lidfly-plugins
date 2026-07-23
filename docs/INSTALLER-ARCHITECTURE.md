@@ -94,10 +94,10 @@ Remove сверяет файл с SHA-256 из установленного stat
 URI строит библиотека URL, а абсолютный путь кодируется как query value:
 
 ```text
-codex://plugins/?marketplacePath=<encoded path to .agents/plugins/marketplace.json>
+codex://plugins/lidfly?marketplacePath=<encoded path to .agents/plugins/marketplace.json>
 ```
 
-Тесты покрывают пробелы, кириллицу, macOS path, Windows drive letter и backslash. Системный handler открывается через официальный Tauri opener. Неудача handler отображается как «Codex не найден или не открывает ссылку» и не отменяет уже подготовленный bundle.
+Имя плагина `lidfly` обязательно передаётся в path: без него Codex не может определить локальную карточку плагина. Тесты покрывают имя плагина, пробелы, кириллицу, macOS path, Windows drive letter и backslash. Системный handler открывается через официальный Tauri opener. Неудача handler отображается как «Codex не найден или не открывает ссылку» и не отменяет уже подготовленный bundle.
 
 ## Updater и подписи
 
