@@ -16,7 +16,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   BUNDLE_PATHS,
+  GENERATED_SKILLS_MANIFEST_PATH,
   inspectSourceBundle,
+  isAllowedBundlePath,
   isSafeRelativePath,
 } from "../../scripts/lib/plugin-bundle.mjs";
 import {
@@ -105,6 +107,10 @@ describe("plugin bundle contract", () => {
       second.metadata.plugin_bundle_sha256,
     );
     expect(first.metadata.files).toEqual(second.metadata.files);
+    expect(BUNDLE_PATHS).toContain(GENERATED_SKILLS_MANIFEST_PATH);
+    expect(
+      BUNDLE_PATHS.filter((relativePath) => relativePath.endsWith("/SKILL.md")),
+    ).toHaveLength(20);
   });
 
   it("rejects traversal, absolute paths and Windows separators", () => {
@@ -112,6 +118,15 @@ describe("plugin bundle contract", () => {
     expect(isSafeRelativePath("../secret")).toBe(false);
     expect(isSafeRelativePath("/tmp/secret")).toBe(false);
     expect(isSafeRelativePath("plugins\\lidfly\\.mcp.json")).toBe(false);
+    expect(
+      isAllowedBundlePath(
+        "plugins/lidfly/skills/semantic-core/references/output-format.md",
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedBundlePath("plugins/lidfly/skills/semantic-core/README.md"),
+    ).toBe(false);
+    expect(isAllowedBundlePath("plugins/lidfly/README.md")).toBe(false);
   });
 
   it("rejects unknown files in a built bundle", async () => {

@@ -2,6 +2,7 @@
 import {
   copyFile,
   mkdir,
+  readFile,
   readdir,
   rm,
   rmdir,
@@ -14,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import {
   BUNDLE_PATHS,
   inspectSourceBundle,
+  isAllowedBundlePath,
   stableJson,
 } from "./lib/plugin-bundle.mjs";
 
@@ -28,13 +30,38 @@ const metadataPath = path.join(resourcesRoot, "plugin-bundle-files.json");
 const markerPath = path.join(resourcesRoot, ".plugin-bundle-generated");
 
 async function removePreviousGeneratedFiles() {
-  for (const relativePath of BUNDLE_PATHS) {
+  const generatedPaths = new Set(BUNDLE_PATHS);
+  try {
+    const previousMetadata = JSON.parse(await readFile(metadataPath, "utf8"));
+    if (
+      previousMetadata?.schema_version !== 1 ||
+      !Array.isArray(previousMetadata.files)
+    ) {
+      throw new Error("Previous plugin bundle metadata is invalid");
+    }
+    for (const file of previousMetadata.files) {
+      if (
+        !file ||
+        typeof file.path !== "string" ||
+        !isAllowedBundlePath(file.path)
+      ) {
+        throw new Error(
+          `Previous plugin bundle contains an unsafe managed path: ${String(file?.path)}`,
+        );
+      }
+      generatedPaths.add(file.path);
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  for (const relativePath of generatedPaths) {
     await rm(path.join(bundleRoot, ...relativePath.split("/")), {
       force: true,
     });
   }
   const directories = new Set(
-    BUNDLE_PATHS.flatMap((relativePath) => {
+    [...generatedPaths].flatMap((relativePath) => {
       const parts = relativePath.split("/").slice(0, -1);
       return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
     }),

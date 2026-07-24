@@ -103,7 +103,9 @@ h1 {
 }
 
 .intro,
-.status-card {
+.status-card,
+.update-panel,
+.codex-update-panel {
   border: 1px solid rgba(72, 49, 99, 0.1);
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.88);
@@ -157,6 +159,113 @@ h1 {
   color: #554a63;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.update-panel,
+.codex-update-panel {
+  display: grid;
+  align-items: center;
+  gap: 18px;
+  margin-top: 16px;
+  padding: 22px 24px;
+}
+
+.update-panel[hidden],
+.codex-update-panel[hidden] {
+  display: none;
+}
+
+.update-panel {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  color: white;
+  border-color: rgba(255, 255, 255, 0.2);
+  background:
+    radial-gradient(
+      circle at 86% -10%,
+      rgba(255, 255, 255, 0.28),
+      transparent 16rem
+    ),
+    linear-gradient(135deg, #7000ff, #4d00ad);
+  box-shadow: 0 22px 50px rgba(91, 0, 204, 0.25);
+}
+
+.update-panel .eyebrow {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.update-symbol {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 27px;
+  font-weight: 800;
+}
+
+.update-copy h2,
+.codex-update-panel h2 {
+  margin: 5px 0 5px;
+  font-size: 20px;
+  letter-spacing: -0.025em;
+}
+
+.update-copy p,
+.codex-update-panel p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.update-copy p {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.button-update {
+  min-height: 54px;
+  padding: 0 22px;
+  color: #5511a7;
+  background: white;
+  box-shadow: 0 12px 26px rgba(31, 0, 70, 0.24);
+  font-size: 14px;
+}
+
+.update-progress {
+  width: min(100%, 410px);
+  height: 7px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  accent-color: white;
+}
+
+.update-progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.update-progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: white;
+}
+
+.update-panel.is-downloading .update-symbol {
+  animation: rotate 1.4s linear infinite;
+}
+
+.codex-update-panel {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-color: rgba(18, 163, 109, 0.22);
+  background: linear-gradient(135deg, #effbf6, #ffffff);
+  box-shadow: 0 18px 45px rgba(23, 113, 81, 0.1);
+}
+
+.codex-update-panel p {
+  color: #52665e;
 }
 
 .status-card {
@@ -371,6 +480,12 @@ footer a {
   }
 }
 
+@keyframes rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 720px) {
   body {
     min-width: 0;
@@ -388,5 +503,19 @@ footer a {
 
   .steps li {
     min-height: 105px;
+  }
+
+  .update-panel,
+  .codex-update-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .update-symbol {
+    display: none;
+  }
+
+  .button-update,
+  .codex-update-panel .button {
+    width: 100%;
   }
 }

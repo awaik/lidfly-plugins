@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
 use lidfly_codex_plugin_installer_lib::bundle::{
-    verify_bundle, BundleFile, BundleMetadata, BUNDLE_PATHS,
+    verify_bundle, BundleFile, BundleMetadata, BUNDLE_BASE_PATHS,
 };
 use lidfly_codex_plugin_installer_lib::models::{FileCondition, InstallerPhase};
 use lidfly_codex_plugin_installer_lib::operations::{FailPoint, InstallLayout, InstallerCore};
@@ -16,26 +16,77 @@ struct Fixture {
     metadata: PathBuf,
 }
 
+const TEST_SKILL_PATHS: [&str; 2] = [
+    "plugins/lidfly/skills/test-skill/SKILL.md",
+    "plugins/lidfly/skills/test-skill/agents/openai.yaml",
+];
+
+fn fixture_bundle_paths() -> Vec<&'static str> {
+    BUNDLE_BASE_PATHS
+        .into_iter()
+        .chain(TEST_SKILL_PATHS)
+        .collect()
+}
+
 fn fixture(version: &str) -> Fixture {
     let temp = tempfile::tempdir().expect("create fixture directory");
     let root = temp.path().join("bundle");
-    let documents = [
+    let skill_documents = [
         (
-            BUNDLE_PATHS[0],
+            TEST_SKILL_PATHS[0],
+            "---\nname: test-skill\ndescription: \"Test skill\"\n---\n".to_owned(),
+        ),
+        (
+            TEST_SKILL_PATHS[1],
+            "interface:\n  display_name: \"Test\"\n  short_description: \"Test skill fixture description\"\n".to_owned(),
+        ),
+    ];
+    let skill_hashes = skill_documents
+        .iter()
+        .map(|(path, content)| {
+            (
+                path.rsplit_once("test-skill/")
+                    .expect("test skill relative path")
+                    .1,
+                format!("{:x}", Sha256::digest(content.as_bytes())),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let skills_manifest = serde_json::to_string_pretty(&serde_json::json!({
+        "version": 1,
+        "skills": {
+            "test-skill": skill_hashes
+        }
+    }))
+    .expect("serialize skills manifest");
+    let mut documents = vec![
+        (
+            BUNDLE_BASE_PATHS[0],
             r#"{"name":"lidfly","interface":{"displayName":"LidFly"},"plugins":[{"name":"lidfly","source":{"source":"local","path":"./plugins/lidfly"},"policy":{"installation":"AVAILABLE","authentication":"ON_INSTALL"},"category":"Data & Analytics"}]}"#.to_owned(),
         ),
         (
-            BUNDLE_PATHS[1],
-            format!(r#"{{"name":"lidfly","version":"{version}","mcpServers":"./.mcp.json"}}"#),
+            BUNDLE_BASE_PATHS[1],
+            format!(r#"{{"name":"lidfly","version":"{version}","skills":"./skills/","mcpServers":"./.mcp.json"}}"#),
         ),
         (
-            BUNDLE_PATHS[2],
+            BUNDLE_BASE_PATHS[2],
             r#"{"mcpServers":{"lidfly":{"type":"http","url":"https://lidfly.ru/mcp/v3"}}}"#.to_owned(),
         ),
-        (BUNDLE_PATHS[3], format!("<svg><title>icon-{version}</title></svg>")),
-        (BUNDLE_PATHS[4], format!("<svg><title>dark-{version}</title></svg>")),
-        (BUNDLE_PATHS[5], format!("<svg><title>logo-{version}</title></svg>")),
+        (
+            BUNDLE_BASE_PATHS[3],
+            format!("<svg><title>icon-{version}</title></svg>"),
+        ),
+        (
+            BUNDLE_BASE_PATHS[4],
+            format!("<svg><title>dark-{version}</title></svg>"),
+        ),
+        (
+            BUNDLE_BASE_PATHS[5],
+            format!("<svg><title>logo-{version}</title></svg>"),
+        ),
+        (BUNDLE_BASE_PATHS[6], skills_manifest),
     ];
+    documents.extend(skill_documents);
     let mut records = Vec::new();
     let mut bundle_digest = Sha256::new();
     for (relative, content) in documents {
@@ -91,7 +142,7 @@ fn full_install_verify_repair_remove_flow_is_safe_and_idempotent() {
     let installed = core
         .prepare(false, false, FailPoint::None)
         .expect("install on empty directory");
-    assert_eq!(installed.changed_files.len(), BUNDLE_PATHS.len());
+    assert_eq!(installed.changed_files.len(), fixture_bundle_paths().len());
     assert!(installed.status.can_open_codex);
     assert_eq!(installed.status.phase, InstallerPhase::InstalledBundle);
     assert!(Path::new(&installed.status.marketplace_path).is_absolute());
@@ -114,7 +165,7 @@ fn full_install_verify_repair_remove_flow_is_safe_and_idempotent() {
             .expect("status after removal")
             .files
             .iter()
-            .find(|file| file.path == BUNDLE_PATHS[3])
+            .find(|file| file.path == BUNDLE_BASE_PATHS[3])
             .expect("icon status")
             .condition,
         FileCondition::Missing,
@@ -143,7 +194,7 @@ fn full_install_verify_repair_remove_flow_is_safe_and_idempotent() {
     assert!(mcp_path.is_file());
     assert!(removed
         .preserved_files
-        .contains(&BUNDLE_PATHS[2].to_owned()));
+        .contains(&BUNDLE_BASE_PATHS[2].to_owned()));
     assert!(removed
         .status
         .unknown_files
@@ -228,7 +279,7 @@ fn remove_refuses_an_inconsistent_managed_manifest() {
         .remove()
         .expect_err("remove must fail closed without managed-files.json");
     assert_eq!(error.code, "managed_state_inconsistent");
-    for relative in BUNDLE_PATHS {
+    for relative in fixture_bundle_paths() {
         assert!(app_data.path().join("marketplace").join(relative).is_file());
     }
 }
@@ -360,7 +411,7 @@ fn symlink_target_is_rejected_without_touching_external_file() {
         status
             .files
             .iter()
-            .find(|file| file.path == BUNDLE_PATHS[2])
+            .find(|file| file.path == BUNDLE_BASE_PATHS[2])
             .expect("mcp status")
             .condition,
         FileCondition::Unsafe,

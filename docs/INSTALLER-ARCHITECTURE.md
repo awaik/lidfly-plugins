@@ -31,7 +31,7 @@ Remote MCP остаётся только `https://lidfly.ru/mcp/v3` с transport
 
 ## Детерминированный plugin bundle
 
-Allowlist задан в `scripts/lib/plugin-bundle.mjs` и состоит ровно из шести публичных файлов:
+Базовый allowlist задан в `scripts/lib/plugin-bundle.mjs`:
 
 ```text
 .agents/plugins/marketplace.json
@@ -40,9 +40,12 @@ plugins/lidfly/.mcp.json
 plugins/lidfly/assets/icon.svg
 plugins/lidfly/assets/logo-dark.svg
 plugins/lidfly/assets/logo.svg
+plugins/lidfly/skills/.lidfly-generated-skills.json
 ```
 
-Сборщик отклоняет пропавшие, пустые, неизвестные, symlink и hardlink-файлы, path traversal, локальные абсолютные пути, development hostnames и похожие на секреты значения. Он валидирует JSON, стабильные идентификаторы, MCP endpoint и ссылки на assets.
+Остальной allowlist скиллов детерминированно строится из `plugins/lidfly/skills/.lidfly-generated-skills.json`. Manifest содержит точные относительные пути и SHA-256 файлов каждого скилла. Разрешены только `SKILL.md`, `agents/openai.yaml` и ресурсы внутри `assets/`, `references/` или `scripts/`; wildcard-копирование каталога плагина запрещено.
+
+Сборщик отклоняет пропавшие, пустые, неизвестные, рассинхронизированные, symlink и hardlink-файлы, path traversal, локальные абсолютные пути, development hostnames и похожие на секреты значения. Он валидирует JSON, стабильные идентификаторы, MCP endpoint, ссылки на assets и checksum-manifest скиллов. Rust-проверка установщика независимо восстанавливает тот же allowlist из встроенного manifest перед записью файлов.
 
 Для каждого пути сохраняются размер и SHA-256. Общий `plugin_bundle_sha256` вычисляется по отсортированной последовательности:
 
@@ -102,6 +105,14 @@ codex://plugins/lidfly?marketplacePath=<encoded path to .agents/plugins/marketpl
 ## Updater и подписи
 
 Приложение проверяет `https://lidfly.ru/codex-plugin-downloads/latest.json` официальным Tauri updater и никогда не разрешает downgrade автоматически. Production public key внедряет release CI через отдельный config; base development config намеренно не содержит production key. Private updater key существует только в GitHub Actions secrets или защищённом хранилище релиз-инженера.
+
+Проверка запускается после восстановления файлового состояния и повторяется каждые 15 минут, пока окно открыто. Возврат фокуса также инициирует проверку, если предыдущая была достаточно давно. Отсутствие сети не блокирует подготовку уже встроенного bundle; ошибка подписи показывается как отдельная ошибка безопасности.
+
+Когда доступна новая версия, UI показывает отдельную крупную карточку обновления. После подтверждения Tauri скачивает и проверяет updater payload, устанавливает его и перезапускает приложение. Новый бинарник содержит plugin bundle той же версии. При первом запуске `sync_bundle_after_update` транзакционно обновляет локальный marketplace, если предыдущий bundle уже был подготовлен, файлы не изменены пользователем и downgrade не обнаружен. Затем приложение автоматически открывает карточку LidFly в Codex.
+
+Граница Codex остаётся явной: пользователь нажимает штатную кнопку установки или обновления на карточке плагина, перезапускает Codex и начинает новый чат. Установщик не вызывает Codex CLI, не пишет в plugin cache и не подменяет это подтверждение. Если managed-файлы изменены, автоматическая синхронизация останавливается и предлагает Repair с backup.
+
+Приложение не устанавливает фоновый daemon, Login Item или Windows startup task. Автопроверка работает при запуске и пока окно установщика открыто.
 
 Контуры доверия нельзя смешивать:
 

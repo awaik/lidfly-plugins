@@ -34,7 +34,7 @@ async function listFiles(directory, prefix = "") {
     else
       throw new Error(`Unsupported file type in built bundle: ${relativePath}`);
   }
-  return result.sort((a, b) => a.localeCompare(b, "en"));
+  return result.sort();
 }
 
 const actualPaths = await listFiles(bundleRoot);

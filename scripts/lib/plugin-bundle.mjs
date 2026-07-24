@@ -1,18 +1,25 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const BUNDLE_SCHEMA_VERSION = 1;
-export const BUNDLE_PATHS = Object.freeze([
+export const GENERATED_SKILLS_MANIFEST_PATH =
+  "plugins/lidfly/skills/.lidfly-generated-skills.json";
+export const BUNDLE_BASE_PATHS = Object.freeze([
   ".agents/plugins/marketplace.json",
   "plugins/lidfly/.codex-plugin/plugin.json",
   "plugins/lidfly/.mcp.json",
   "plugins/lidfly/assets/icon.svg",
   "plugins/lidfly/assets/logo-dark.svg",
   "plugins/lidfly/assets/logo.svg",
+  GENERATED_SKILLS_MANIFEST_PATH,
 ]);
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
+const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SKILL_RESOURCE_ROOTS = new Set(["assets", "references", "scripts"]);
 const FORBIDDEN_TEXT = [
   {
     label: "локальный macOS-путь",
@@ -37,6 +44,112 @@ const FORBIDDEN_TEXT = [
   },
 ];
 
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertExactKeys(value, expected, label) {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
+    throw new Error(`${label} must contain exactly: ${wanted.join(", ")}`);
+  }
+}
+
+function isSafeSkillRelativePath(relativePath) {
+  if (!isSafeRelativePath(relativePath)) return false;
+  if (relativePath === "SKILL.md" || relativePath === "agents/openai.yaml") {
+    return true;
+  }
+  const parts = relativePath.split("/");
+  return (
+    parts.length >= 2 &&
+    SKILL_RESOURCE_ROOTS.has(parts[0]) &&
+    parts.slice(1).every((part) => part.length > 0 && !part.startsWith("."))
+  );
+}
+
+export function isAllowedBundlePath(relativePath) {
+  if (BUNDLE_BASE_PATHS.includes(relativePath)) return true;
+  const prefix = "plugins/lidfly/skills/";
+  if (!relativePath.startsWith(prefix)) return false;
+  const remainder = relativePath.slice(prefix.length);
+  const separator = remainder.indexOf("/");
+  if (separator <= 0) return false;
+  const skillName = remainder.slice(0, separator);
+  const skillRelativePath = remainder.slice(separator + 1);
+  return (
+    SKILL_NAME_RE.test(skillName) &&
+    skillName.length <= 64 &&
+    isSafeSkillRelativePath(skillRelativePath)
+  );
+}
+
+function parseGeneratedSkillsManifest(payload, label) {
+  if (!isObject(payload)) throw new Error(`${label} must be an object`);
+  assertExactKeys(payload, ["skills", "version"], label);
+  if (payload.version !== 1) {
+    throw new Error(`${label} must use version 1`);
+  }
+  if (!isObject(payload.skills) || Object.keys(payload.skills).length === 0) {
+    throw new Error(`${label}.skills must be a non-empty object`);
+  }
+
+  const records = [];
+  for (const skillName of Object.keys(payload.skills).sort()) {
+    if (!SKILL_NAME_RE.test(skillName) || skillName.length > 64) {
+      throw new Error(`${label} contains invalid skill name: ${skillName}`);
+    }
+    const files = payload.skills[skillName];
+    if (!isObject(files) || Object.keys(files).length === 0) {
+      throw new Error(`${label}.${skillName} must contain files`);
+    }
+    if (!Object.hasOwn(files, "SKILL.md")) {
+      throw new Error(`${label}.${skillName} is missing SKILL.md`);
+    }
+    if (!Object.hasOwn(files, "agents/openai.yaml")) {
+      throw new Error(`${label}.${skillName} is missing agents/openai.yaml`);
+    }
+    for (const relativePath of Object.keys(files).sort()) {
+      if (!isSafeSkillRelativePath(relativePath)) {
+        throw new Error(
+          `${label}.${skillName} contains unsafe resource path: ${relativePath}`,
+        );
+      }
+      const sha256 = files[relativePath];
+      if (typeof sha256 !== "string" || !SHA256_RE.test(sha256)) {
+        throw new Error(
+          `${label}.${skillName}/${relativePath} has invalid SHA-256`,
+        );
+      }
+      records.push({
+        path: `plugins/lidfly/skills/${skillName}/${relativePath}`,
+        sha256,
+      });
+    }
+  }
+  return { payload, records };
+}
+
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+const generatedSkills = parseGeneratedSkillsManifest(
+  JSON.parse(
+    readFileSync(
+      path.join(repositoryRoot, GENERATED_SKILLS_MANIFEST_PATH),
+      "utf8",
+    ),
+  ),
+  GENERATED_SKILLS_MANIFEST_PATH,
+);
+
+export const BUNDLE_PATHS = Object.freeze([
+  ...BUNDLE_BASE_PATHS,
+  ...generatedSkills.records.map((record) => record.path),
+]);
+
 export function stableJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -56,8 +169,8 @@ export function isSafeRelativePath(relativePath) {
 
 export function bundleDigest(filesWithBytes) {
   const digest = createHash("sha256");
-  for (const file of [...filesWithBytes].sort((a, b) =>
-    a.path.localeCompare(b.path, "en"),
+  for (const file of [...filesWithBytes].sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
   )) {
     digest.update(file.path, "utf8");
     digest.update("\0");
@@ -156,6 +269,36 @@ function parseJson(bytes, relativePath) {
   }
 }
 
+function validateGeneratedSkills(files) {
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  const manifestFile = byPath.get(GENERATED_SKILLS_MANIFEST_PATH);
+  if (!manifestFile) {
+    throw new Error(
+      `Generated skills manifest is missing: ${GENERATED_SKILLS_MANIFEST_PATH}`,
+    );
+  }
+  const bundledSkills = parseGeneratedSkillsManifest(
+    parseJson(manifestFile.bytes, GENERATED_SKILLS_MANIFEST_PATH),
+    GENERATED_SKILLS_MANIFEST_PATH,
+  );
+  if (
+    stableJson(bundledSkills.records) !== stableJson(generatedSkills.records)
+  ) {
+    throw new Error("Generated skills manifest differs from source allowlist");
+  }
+  for (const expected of bundledSkills.records) {
+    const file = byPath.get(expected.path);
+    if (!file)
+      throw new Error(`Generated skill file is missing: ${expected.path}`);
+    const sha256 = createHash("sha256").update(file.bytes).digest("hex");
+    if (sha256 !== expected.sha256) {
+      throw new Error(
+        `Generated skill hash differs from manifest: ${expected.path}`,
+      );
+    }
+  }
+}
+
 function validatePluginDocuments(files) {
   const byPath = new Map(files.map((file) => [file.path, file]));
   const marketplace = parseJson(
@@ -195,6 +338,8 @@ function validatePluginDocuments(files) {
   }
   if (plugin.mcpServers !== "./.mcp.json")
     throw new Error("Plugin must reference ./.mcp.json");
+  if (plugin.skills !== "./skills/")
+    throw new Error("Plugin must reference ./skills/");
   const assetFields = [
     plugin.interface?.composerIcon,
     plugin.interface?.logo,
@@ -217,6 +362,31 @@ function validatePluginDocuments(files) {
   return { marketplace, plugin, mcp };
 }
 
+async function listSkillTree(directory, prefix) {
+  const paths = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const relativePath = `${prefix}/${entry.name}`;
+    if (entry.isSymbolicLink()) {
+      throw new Error(`Symlink found in plugin skills: ${relativePath}`);
+    }
+    if (entry.isDirectory()) {
+      paths.push(
+        ...(await listSkillTree(
+          path.join(directory, entry.name),
+          relativePath,
+        )),
+      );
+    } else if (entry.isFile()) {
+      paths.push(relativePath);
+    } else {
+      throw new Error(
+        `Unsupported file type in plugin skills: ${relativePath}`,
+      );
+    }
+  }
+  return paths.sort();
+}
+
 export async function inspectSourceBundle(repositoryRoot) {
   const root = path.resolve(repositoryRoot);
   const rootStat = await stat(root);
@@ -225,6 +395,19 @@ export async function inspectSourceBundle(repositoryRoot) {
   const files = [];
   for (const relativePath of BUNDLE_PATHS)
     files.push(await readAllowedFile(root, relativePath));
+  const actualSkillPaths = await listSkillTree(
+    path.join(root, "plugins/lidfly/skills"),
+    "plugins/lidfly/skills",
+  );
+  const expectedSkillPaths = BUNDLE_PATHS.filter((relativePath) =>
+    relativePath.startsWith("plugins/lidfly/skills/"),
+  ).sort();
+  if (stableJson(actualSkillPaths) !== stableJson(expectedSkillPaths)) {
+    throw new Error(
+      `Plugin skills differ from generated allowlist: ${actualSkillPaths.join(", ")}`,
+    );
+  }
+  validateGeneratedSkills(files);
   const documents = validatePluginDocuments(files);
   const records = files.map((file) => ({
     path: file.path,
@@ -261,6 +444,7 @@ export async function inspectBuiltBundle(bundleRoot, metadataPath) {
       throw new Error(`Plugin bundle file mismatch: ${file.path}`);
     }
   }
+  validateGeneratedSkills(files);
   validatePluginDocuments(files);
   return { files, metadata };
 }

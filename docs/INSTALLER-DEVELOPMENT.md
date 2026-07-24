@@ -36,6 +36,8 @@ npm test
 
 Ключевые integration cases используют временный `app_data_dir`: пустая установка, повторная idempotent установка, Repair missing/modified с backup, rollback в середине update и перед authoritative state, безопасный Remove, operation lock и symlink escape.
 
+Frontend-тесты отдельно проверяют политику автообновления: немедленную проверку при запуске, отсутствие частых повторов, повтор через 15 минут и корректное поведение при переводе системных часов назад.
+
 ## Локальный запуск
 
 ```sh
@@ -51,6 +53,8 @@ npm run dev:frontend
 ```
 
 В браузере Tauri commands недоступны; этот режим пригоден только для вёрстки.
+
+Для ручной проверки release UX используйте только подписанную тестовую сборку с отдельным тестовым updater endpoint и ключом. Проверьте: автоматическое обнаружение версии, крупную кнопку, progress, relaunch, синхронизацию bundle, автоматическое открытие Codex и повторное открытие по кнопке. Production key в checkout не копируется.
 
 ## Unsigned development build
 
@@ -74,10 +78,18 @@ Unit tests используют только искусственные файл
 
 ## Добавление файла в plugin bundle
 
-1. Убедитесь, что файл публичный и нужен Codex-плагину.
-2. Добавьте точный относительный путь в `BUNDLE_PATHS` внутри `scripts/lib/plugin-bundle.mjs`.
-3. Добавьте путь в Rust-константу `BUNDLE_PATHS`.
-4. Расширьте validation contract и tests.
-5. Пересоберите bundle и проверьте новый hash.
+Для нового или изменённого скилла:
+
+1. Измените канонический скилл в `direct-mcp-ai-project/skills-source/`.
+2. Выполните `node scripts/sync-skills.mjs --plugin-target ../lidfly-plugins/plugins/lidfly/skills` из `direct-mcp-ai-project`.
+3. Проверьте, что `.lidfly-generated-skills.json` обновил точные пути и SHA-256, а в target нет посторонних файлов.
+4. Пересоберите bundle и проверьте новый hash.
+
+Для другого базового публичного файла:
+
+1. Убедитесь, что файл нужен Codex-плагину и не содержит приватных данных.
+2. Добавьте точный относительный путь в `BUNDLE_BASE_PATHS` внутри `scripts/lib/plugin-bundle.mjs` и в `BUNDLE_BASE_PATHS` внутри `installer/src-tauri/src/bundle.rs`.
+3. Расширьте validation contract и tests.
+4. Пересоберите bundle и проверьте новый hash.
 
 Wildcard-копирование каталога плагина запрещено.

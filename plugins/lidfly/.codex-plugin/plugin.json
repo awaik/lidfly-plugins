@@ -1,7 +1,7 @@
 {
   "name": "lidfly",
-  "version": "1.0.1",
-  "description": "Работа с рекламой, аналитикой, сайтами и контентом LidFly через защищённый MCP-сервер.",
+  "version": "1.1.0",
+  "description": "Работа с рекламой, аналитикой, сайтами и контентом LidFly через защищённый MCP-сервер и встроенные скиллы.",
   "author": {
     "name": "LidFly",
     "email": "info@lidfly.ru",
@@ -10,24 +10,16 @@
   "homepage": "https://github.com/awaik/lidfly-plugins",
   "repository": "https://github.com/awaik/lidfly-plugins",
   "license": "MIT",
-  "keywords": [
-    "lidfly",
-    "mcp",
-    "advertising",
-    "analytics",
-    "productivity"
-  ],
+  "keywords": ["lidfly", "mcp", "advertising", "analytics", "productivity"],
+  "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "LidFly",
     "shortDescription": "Реклама, аналитика и сайты через LidFly.",
-    "longDescription": "Подключает Codex к LidFly по HTTPS. После установки войдите по email, чтобы работать с рекламой, аналитикой, сайтами и контентом в новом чате.",
+    "longDescription": "Подключает Codex к LidFly по HTTPS и добавляет специализированные скиллы. После установки войдите по email, чтобы работать с рекламой, аналитикой, сайтами и контентом в новом чате.",
     "developerName": "LidFly",
     "category": "Data & Analytics",
-    "capabilities": [
-      "Read",
-      "Write"
-    ],
+    "capabilities": ["Read", "Write"],
     "websiteURL": "https://lidfly.ru",
     "privacyPolicyURL": "https://lidfly.ru/privacy",
     "termsOfServiceURL": "https://lidfly.ru/offer",

@@ -6,7 +6,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::bundle::{safe_join, BundleFile, BUNDLE_PATHS};
+use crate::bundle::{is_allowed_bundle_path, safe_join, BundleFile};
 use crate::models::ClientError;
 
 pub const STATE_SCHEMA_VERSION: u32 = 1;
@@ -79,11 +79,10 @@ fn validate_state(state: &InstalledState) -> Result<(), ClientError> {
             "Manifest установленного состояния содержит некорректные поля.",
         ));
     }
-    let allowed: BTreeSet<&str> = BUNDLE_PATHS.into_iter().collect();
     let mut seen = BTreeSet::new();
     for file in &state.managed_files {
         safe_join(Path::new("."), &file.path)?;
-        if !allowed.contains(file.path.as_str())
+        if !is_allowed_bundle_path(&file.path)
             || !seen.insert(file.path.as_str())
             || file.size == 0
             || !is_sha256(&file.sha256)
@@ -219,5 +218,31 @@ mod tests {
 
         let error = read_state(&state_path).expect_err("invalid hash must fail closed");
         assert_eq!(error.code, "invalid_state");
+    }
+
+    #[test]
+    fn accepts_state_with_generated_skill_path() {
+        let directory = tempdir().expect("temporary directory");
+        let state_path = directory.path().join("installed-state.json");
+        fs::write(
+            &state_path,
+            serde_json::to_vec(&json!({
+                "schema_version": 1,
+                "installer_version": "1.1.0",
+                "plugin_version": "1.1.0",
+                "plugin_bundle_sha256": "a".repeat(64),
+                "installed_at": "2026-07-24T00:00:00Z",
+                "managed_files": [{
+                    "path": "plugins/lidfly/skills/semantic-core/references/output-format.md",
+                    "size": 1,
+                    "sha256": "b".repeat(64)
+                }]
+            }))
+            .expect("serialize state"),
+        )
+        .expect("write state");
+
+        let state = read_state(&state_path).expect("skill path should be allowed");
+        assert!(state.is_some());
     }
 }
