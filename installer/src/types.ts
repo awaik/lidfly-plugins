@@ -19,6 +19,8 @@ export interface InstallerStatus {
   appVersion: string;
   embeddedPluginVersion: string;
   installedPluginVersion: string | null;
+  bundleOrigin: "embedded" | "remote";
+  sourceCommit: string;
   pluginBundleSha256: string;
   marketplacePath: string;
   phase: InstallerPhase;
@@ -36,6 +38,30 @@ export interface OperationOutcome {
   changedFiles: string[];
   preservedFiles: string[];
   backupDirectory: string | null;
+}
+
+export type PluginContentUpdateState =
+  "up_to_date" | "available" | "requires_installer_update";
+
+export interface PluginContentReleaseSummary {
+  pluginVersion: string;
+  minInstallerVersion: string;
+  publishedAt: string;
+  sourceCommit: string;
+  bundleSize: number;
+}
+
+export interface PluginContentUpdateStatus {
+  state: PluginContentUpdateState;
+  installerVersion: string;
+  currentPluginVersion: string;
+  release: PluginContentReleaseSummary | null;
+}
+
+export interface PluginContentInstallOutcome {
+  release: PluginContentReleaseSummary;
+  operation: OperationOutcome;
+  codexOpened: boolean;
 }
 
 export interface ClientError {

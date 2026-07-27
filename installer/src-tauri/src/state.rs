@@ -6,22 +6,29 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::bundle::{is_allowed_bundle_path, safe_join, BundleFile};
+use crate::bundle::{is_allowed_bundle_path, safe_join, BundleFile, BundleOrigin};
 use crate::models::ClientError;
 
-pub const STATE_SCHEMA_VERSION: u32 = 1;
+pub const STATE_SCHEMA_VERSION: u32 = 2;
+pub const MANAGED_STATE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct InstalledState {
     pub schema_version: u32,
     pub installer_version: String,
     pub plugin_version: String,
     pub plugin_bundle_sha256: String,
     pub installed_at: String,
+    pub bundle_origin: BundleOrigin,
+    pub source_repository: Option<String>,
+    pub source_commit: Option<String>,
+    pub content_key_id: Option<String>,
     pub managed_files: Vec<BundleFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ManagedFilesState {
     pub schema_version: u32,
     pub files: Vec<BundleFile>,
@@ -33,8 +40,8 @@ fn migrate_state(value: Value) -> Result<InstalledState, ClientError> {
         .and_then(Value::as_u64)
         .unwrap_or(0);
     match schema {
-        1 => Ok(serde_json::from_value(value)?),
-        0 => {
+        2 => Ok(serde_json::from_value(value)?),
+        0 | 1 => {
             let mut object = value.as_object().cloned().ok_or_else(|| {
                 ClientError::new(
                     "invalid_state",
@@ -51,6 +58,18 @@ fn migrate_state(value: Value) -> Result<InstalledState, ClientError> {
                     Value::String("unknown".to_owned()),
                 );
             }
+            object
+                .entry("bundle_origin".to_owned())
+                .or_insert_with(|| Value::String("embedded".to_owned()));
+            object
+                .entry("source_repository".to_owned())
+                .or_insert(Value::Null);
+            object
+                .entry("source_commit".to_owned())
+                .or_insert(Value::Null);
+            object
+                .entry("content_key_id".to_owned())
+                .or_insert(Value::Null);
             Ok(serde_json::from_value(Value::Object(object))?)
         }
         other => Err(ClientError::new(
@@ -77,6 +96,31 @@ fn validate_state(state: &InstalledState) -> Result<(), ClientError> {
         return Err(ClientError::new(
             "invalid_state",
             "Manifest установленного состояния содержит некорректные поля.",
+        ));
+    }
+    let valid_source = match (
+        state.source_repository.as_deref(),
+        state.source_commit.as_deref(),
+    ) {
+        (None, None) => true,
+        (Some(repository), Some(commit)) => {
+            repository == "https://github.com/awaik/direct-mcp-ai-project"
+                && commit.len() == 40
+                && commit
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        }
+        _ => false,
+    };
+    if !valid_source
+        || matches!(state.bundle_origin, BundleOrigin::Remote)
+            && (state.source_repository.is_none()
+                || state.source_commit.is_none()
+                || state.content_key_id.as_deref().map_or(true, str::is_empty))
+    {
+        return Err(ClientError::new(
+            "invalid_state",
+            "Manifest установленного состояния содержит некорректный provenance.",
         ));
     }
     let mut seen = BTreeSet::new();
@@ -134,7 +178,9 @@ pub fn validate_managed_mirror(path: &Path, state: &InstalledState) -> Result<()
         )
     })?;
     let managed: ManagedFilesState = serde_json::from_slice(&bytes)?;
-    if managed.schema_version != STATE_SCHEMA_VERSION || managed.files != state.managed_files {
+    if managed.schema_version != MANAGED_STATE_SCHEMA_VERSION
+        || managed.files != state.managed_files
+    {
         return Err(ClientError::new(
             "managed_state_mismatch",
             "managed-files.json не совпадает с authoritative installed-state.json.",

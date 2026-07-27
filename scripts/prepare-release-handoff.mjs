@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
-import { rename, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
@@ -35,11 +35,14 @@ function parseArgs(argv) {
     } else if (argument === "--tag") args.tag = next();
     else throw new Error(`Unknown argument: ${argument}`);
   }
+  if (!/^\d+\.\d+\.\d+$/.test(args.version)) {
+    throw new Error("--version is required and must use X.Y.Z");
+  }
   if (!args.artifactsDir) throw new Error("--artifacts-dir is required");
   if (!args.evidencePath) throw new Error("--evidence is required");
-  if (!args.tag) args.tag = `v${args.version}`;
-  if (args.tag !== `v${args.version}`) {
-    throw new Error("Git tag must be v<version>");
+  if (!args.tag) args.tag = `installer-v${args.version}`;
+  if (args.tag !== `installer-v${args.version}`) {
+    throw new Error("Git tag must be installer-v<version>");
   }
   return args;
 }
@@ -58,8 +61,24 @@ async function atomicWrite(filePath, contents) {
 }
 
 const args = parseArgs(process.argv.slice(2));
+const releaseMetadata = JSON.parse(
+  await readFile(
+    path.join(repositoryRoot, `releases/${args.version}.json`),
+    "utf8",
+  ),
+);
+if (
+  releaseMetadata.schemaVersion !== 2 ||
+  releaseMetadata.installer?.version !== args.version ||
+  !/^\d+\.\d+\.\d+$/.test(releaseMetadata.embeddedPlugin?.version ?? "")
+) {
+  throw new Error(
+    `releases/${args.version}.json does not define this installer build`,
+  );
+}
 const verified = await verifyReleaseArtifacts({
   version: args.version,
+  embeddedPluginVersion: releaseMetadata.embeddedPlugin.version,
   artifactsDir: args.artifactsDir,
   pluginMetadataPath: path.join(args.artifactsDir, "plugin-bundle-files.json"),
   repositoryRoot,
@@ -84,6 +103,7 @@ const [tauriVersion, rustVersion, nodeVersion] = await Promise.all([
 const handoff = {
   schema_version: 1,
   release_version: args.version,
+  embedded_plugin_version: verified.embeddedPluginVersion,
   git_commit: gitCommit,
   git_tag: args.tag,
   built_at: new Date().toISOString(),

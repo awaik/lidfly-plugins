@@ -40,6 +40,7 @@ plugins/lidfly/.mcp.json
 plugins/lidfly/assets/icon.svg
 plugins/lidfly/assets/logo-dark.svg
 plugins/lidfly/assets/logo.svg
+plugins/lidfly/skills-source.lock.json
 plugins/lidfly/skills/.lidfly-generated-skills.json
 ```
 
@@ -53,7 +54,7 @@ plugins/lidfly/skills/.lidfly-generated-skills.json
 UTF8(path) + NUL + ASCII(size) + NUL + file_bytes + NUL
 ```
 
-Метаданные не содержат timestamp, поэтому одинаковые входные байты дают одинаковый hash. Release job собирает bundle один раз и передаёт одни и те же resources macOS и Windows jobs.
+`skills-source.lock.json` связывает snapshot с полным commit `awaik/direct-mcp-ai-project` и детерминированным digest дерева skills. Метаданные не содержат timestamp, поэтому одинаковые входные байты дают одинаковый hash. Release job собирает bundle один раз и передаёт одни и те же resources macOS и Windows jobs.
 
 ## Раскладка данных пользователя
 
@@ -70,9 +71,19 @@ Tauri определяет `app_data_dir`; домашний каталог и `%
     ├── backups/
     ├── transactions/
     └── logs/installer.jsonl
+
+<app_data_dir>/content-cache/
+├── <plugin-version>-<archive-sha256>/
+│   ├── bundle.tar.gz
+│   ├── bundle.tar.gz.sig
+│   ├── plugin-bundle/
+│   ├── plugin-bundle-files.json
+│   ├── release.json
+│   └── release.json.sig
+└── active.json
 ```
 
-`installed-state.json` — authoritative manifest и записывается последним. Он содержит schema version, версии installer/plugin, bundle hash, UTC-время успешной установки и полный список managed-файлов с размером и SHA-256. `managed-files.json` — проверяемое зеркало списка для диагностики. Миграция legacy schema без номера поддерживается; неизвестная будущая schema блокирует запись.
+`installed-state.json` schema 2 — authoritative manifest и записывается последним. Он содержит версии installer/plugin, `bundle_origin`, source repository/commit, content key id, bundle hash, UTC-время успешной установки и полный список managed-файлов. Schema 0/1 мигрируется при чтении как `embedded`; неизвестная будущая schema блокирует запись.
 
 ## Файловый протокол и состояния
 
@@ -102,13 +113,17 @@ codex://plugins/lidfly?marketplacePath=<encoded path to .agents/plugins/marketpl
 
 Имя плагина `lidfly` обязательно передаётся в path: без него Codex не может определить локальную карточку плагина. Тесты покрывают имя плагина, пробелы, кириллицу, macOS path, Windows drive letter и backslash. Системный handler открывается через официальный Tauri opener. Неудача handler отображается как «Codex не найден или не открывает ссылку» и не отменяет уже подготовленный bundle.
 
-## Updater и подписи
+## Два updater-канала и подписи
 
 Приложение проверяет `https://lidfly.ru/codex-plugin-downloads/latest.json` официальным Tauri updater и никогда не разрешает downgrade автоматически. Production public key внедряет release CI через отдельный config; base development config намеренно не содержит production key. Private updater key существует только в GitHub Actions secrets или защищённом хранилище релиз-инженера.
 
 Проверка запускается после восстановления файлового состояния и повторяется каждые 15 минут, пока окно открыто. Возврат фокуса также инициирует проверку, если предыдущая была достаточно давно. Отсутствие сети не блокирует подготовку уже встроенного bundle; ошибка подписи показывается как отдельная ошибка безопасности.
 
-Когда доступна новая версия, UI показывает отдельную крупную карточку обновления. После подтверждения Tauri скачивает и проверяет updater payload, устанавливает его и перезапускает приложение. Новый бинарник содержит plugin bundle той же версии. При первом запуске `sync_bundle_after_update` транзакционно обновляет локальный marketplace, если предыдущий bundle уже был подготовлен, файлы не изменены пользователем и downgrade не обнаружен. Затем приложение автоматически открывает карточку LidFly в Codex.
+Plugin content проверяется независимо по фиксированному `https://lidfly.ru/codex-plugin-content/latest.json`. Manifest и archive подписаны отдельным Ed25519 key, не связанным с Tauri updater key. Backend не принимает URL от frontend. Он проверяет strict schema, `min_installer_version`, anti-downgrade, exact HTTPS origin/route, размер, SHA-256 и обе подписи.
+
+Archive extractor запрещает absolute/Windows/UNC/traversal paths, symlink, hardlink, duplicate и special entries и ограничивает compressed/unpacked size, число и размер файлов. Только после этого вызывается общий `verify_bundle`. Проверенный cache выбирается, если его версия не ниже embedded; повреждённый active pointer и каталог переводятся в диагностический quarantine при явной повторной проверке, после чего та же signed версия может быть загружена заново. Предыдущие versioned cache не удаляются автоматически.
+
+Content-only update не вызывает relaunch. Полученный `VerifiedBundle` передаётся тому же `InstallerCore`, поэтому backup, operation lock, journal, atomic replace и crash recovery не дублируются. Tauri updater остаётся отдельным каналом приложения; если `min_installer_version` выше текущей, UI сначала предлагает обновить установщик.
 
 Граница Codex остаётся явной: пользователь нажимает штатную кнопку установки или обновления на карточке плагина, перезапускает Codex и начинает новый чат. Установщик не вызывает Codex CLI, не пишет в plugin cache и не подменяет это подтверждение. Если managed-файлы изменены, автоматическая синхронизация останавливается и предлагает Repair с backup.
 

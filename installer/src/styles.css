@@ -105,6 +105,7 @@ h1 {
 .intro,
 .status-card,
 .update-panel,
+.plugin-update-panel,
 .codex-update-panel {
   border: 1px solid rgba(72, 49, 99, 0.1);
   border-radius: 24px;
@@ -162,6 +163,7 @@ h1 {
 }
 
 .update-panel,
+.plugin-update-panel,
 .codex-update-panel {
   display: grid;
   align-items: center;
@@ -171,6 +173,7 @@ h1 {
 }
 
 .update-panel[hidden],
+.plugin-update-panel[hidden],
 .codex-update-panel[hidden] {
   display: none;
 }
@@ -187,6 +190,18 @@ h1 {
     ),
     linear-gradient(135deg, #7000ff, #4d00ad);
   box-shadow: 0 22px 50px rgba(91, 0, 204, 0.25);
+}
+
+.plugin-update-panel {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  color: white;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, #1f7465, #115447);
+  box-shadow: 0 22px 50px rgba(17, 84, 71, 0.2);
+}
+
+.plugin-update-panel .eyebrow {
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .update-panel .eyebrow {
@@ -253,6 +268,7 @@ h1 {
   background: white;
 }
 
+.plugin-update-panel.is-downloading .update-symbol,
 .update-panel.is-downloading .update-symbol {
   animation: rotate 1.4s linear infinite;
 }
@@ -506,6 +522,7 @@ footer a {
   }
 
   .update-panel,
+  .plugin-update-panel,
   .codex-update-panel {
     grid-template-columns: 1fr;
   }
@@ -515,6 +532,7 @@ footer a {
   }
 
   .button-update,
+  .plugin-update-panel .button,
   .codex-update-panel .button {
     width: 100%;
   }

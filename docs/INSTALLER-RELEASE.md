@@ -28,14 +28,30 @@ checks, Node/Rust tests, компилирует native development application �
 
 ## Версия и чистый source
 
-Одна версия `X.Y.Z` должна совпадать в:
+Версии независимы:
 
-- `plugins/lidfly/.codex-plugin/plugin.json`;
-- `installer/package.json` и root entry `package-lock.json`;
+- `installer_version` совпадает в `installer/package.json`, root entry `package-lock.json`,
+  `tauri.conf.json`, `Cargo.toml`, package entry `Cargo.lock` и `releases/<installer_version>.json`;
+- `plugin_version` совпадает в `plugins/lidfly/.codex-plugin/plugin.json`,
+  embedded `plugin-bundle-files.json` и `plugin-releases/<plugin_version>.json`.
+
+Installer release использует tag `installer-vX.Y.Z`. Plugin content release
+использует отдельный tag `plugin-vX.Y.Z`. Legacy tags `v1.0.x` и `v1.1.0`
+не переписываются.
+
+В installer metadata schema 2 дополнительно фиксируется embedded plugin version.
+Она не обязана совпадать с installer version.
+
+Обычный `npm run version:check` допускает, что marketplace уже ушёл вперёд
+content-only patch-версиями. Release-команды используют
+`npm run version:check -- --installer-build`: он требует точного совпадения
+текущего plugin snapshot с `embeddedPlugin.version` и не позволяет пересобрать
+старую версию installer с новыми байтами плагина.
+
+Синхронно проверяются:
+
 - `installer/src-tauri/tauri.conf.json`;
-- `installer/src-tauri/Cargo.toml` и package entry `Cargo.lock`;
-- `releases/X.Y.Z.json`, если metadata существует;
-- tag `vX.Y.Z` и именах release files.
+- tag `installer-vX.Y.Z` и имена installer release files.
 
 Платформы собираются из одного и того же уже согласованного tag. Если основной
 checkout содержит пользовательские изменения, release выполняется в отдельном
@@ -44,7 +60,7 @@ checkout содержит пользовательские изменения, r
 ```sh
 RELEASE_ROOT="$(mktemp -d)"
 RELEASE_WORKTREE="$RELEASE_ROOT/source"
-git worktree add --detach "$RELEASE_WORKTREE" vX.Y.Z
+git worktree add --detach "$RELEASE_WORKTREE" installer-vX.Y.Z
 cd "$RELEASE_WORKTREE/installer"
 npm run ci:local
 ```
@@ -105,6 +121,7 @@ export APPLE_TEAM_ID='<Apple team id>'
 export NOTARYTOOL_PROFILE='glas-notary'
 export TAURI_SIGNING_PRIVATE_KEY_PATH='/protected/path/lidfly-codex-installer-updater.key'
 export TAURI_UPDATER_PUBLIC_KEY_PATH='/protected/path/lidfly-codex-installer-updater.key.pub'
+export LIDFLY_PLUGIN_CONTENT_PUBLIC_KEY_BASE64='<base64 raw 32-byte Ed25519 public key>'
 
 npm run release:macos:local -- X.Y.Z /absolute/output/X.Y.Z/macos
 ```
@@ -132,6 +149,7 @@ cd installer
 $env:TAURI_SIGNING_PRIVATE_KEY_PATH = 'C:\protected\lidfly-codex-installer-updater.key'
 $env:TAURI_UPDATER_PUBLIC_KEY_PATH = 'C:\protected\lidfly-codex-installer-updater.key.pub'
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = '<read from local secret storage>'
+$env:LIDFLY_PLUGIN_CONTENT_PUBLIC_KEY_BASE64 = '<base64 raw 32-byte Ed25519 public key>'
 
 npm run ci:local
 npm run release:windows:local -- -Version X.Y.Z -ArtifactsDir C:\release\X.Y.Z\windows
@@ -158,6 +176,7 @@ cargo install --locked cargo-xwin
 cd installer
 export TAURI_SIGNING_PRIVATE_KEY_PATH='/protected/path/lidfly-codex-installer-updater.key'
 export TAURI_UPDATER_PUBLIC_KEY_PATH='/protected/path/lidfly-codex-installer-updater.key.pub'
+export LIDFLY_PLUGIN_CONTENT_PUBLIC_KEY_BASE64='<base64 raw 32-byte Ed25519 public key>'
 
 npm run release:windows:cross-local -- X.Y.Z /absolute/output/X.Y.Z/windows
 ```
@@ -204,7 +223,7 @@ npm run release:verify -- \
 
 npm run release:handoff -- \
   --version X.Y.Z \
-  --tag vX.Y.Z \
+  --tag installer-vX.Y.Z \
   --artifacts-dir /absolute/output/X.Y.Z/final \
   --evidence /absolute/output/X.Y.Z/final/signing-evidence.json
 ```
@@ -221,7 +240,7 @@ hash, несовпадающий plugin bundle, platform evidence от друг�
 
 ```sh
 FINAL_DIR='/absolute/output/X.Y.Z/final'
-gh release create vX.Y.Z \
+gh release create installer-vX.Y.Z \
   --repo awaik/lidfly-plugins \
   --verify-tag \
   --title 'LidFly Codex Plugin Installer X.Y.Z' \

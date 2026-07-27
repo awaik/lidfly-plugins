@@ -110,7 +110,7 @@ describe("plugin bundle contract", () => {
     expect(BUNDLE_PATHS).toContain(GENERATED_SKILLS_MANIFEST_PATH);
     expect(
       BUNDLE_PATHS.filter((relativePath) => relativePath.endsWith("/SKILL.md")),
-    ).toHaveLength(20);
+    ).toHaveLength(21);
   });
 
   it("rejects traversal, absolute paths and Windows separators", () => {
@@ -422,7 +422,7 @@ describe("release artifact contract", () => {
     ).rejects.toThrow(/bundle SHA-256 mismatch|bundle file mismatch/iu);
   });
 
-  it("rejects artifact names for one version paired with another plugin version", async () => {
+  it("allows installer artifacts and embedded plugin to use independent versions", async () => {
     const directory = await fakeReleaseDirectory();
     for (const [oldName, newName] of releaseFilenames(releaseVersion).map(
       (oldName, index) => [oldName, releaseFilenames(mismatchedVersion)[index]],
@@ -439,6 +439,9 @@ describe("release artifact contract", () => {
         skipPlatformSignatures: true,
         skipUpdaterSignatures: true,
       }),
-    ).rejects.toThrow(/does not match release/iu);
+    ).resolves.toMatchObject({
+      version: mismatchedVersion,
+      embeddedPluginVersion: "1.1.1",
+    });
   });
 });

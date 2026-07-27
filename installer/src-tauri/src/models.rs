@@ -35,6 +35,8 @@ pub struct InstallerStatus {
     pub app_version: String,
     pub embedded_plugin_version: String,
     pub installed_plugin_version: Option<String>,
+    pub bundle_origin: crate::bundle::BundleOrigin,
+    pub source_commit: String,
     pub plugin_bundle_sha256: String,
     pub marketplace_path: String,
     pub phase: InstallerPhase,
@@ -54,6 +56,41 @@ pub struct OperationOutcome {
     pub changed_files: Vec<String>,
     pub preserved_files: Vec<String>,
     pub backup_directory: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginContentUpdateState {
+    UpToDate,
+    Available,
+    RequiresInstallerUpdate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginContentReleaseSummary {
+    pub plugin_version: String,
+    pub min_installer_version: String,
+    pub published_at: String,
+    pub source_commit: String,
+    pub bundle_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginContentUpdateStatus {
+    pub state: PluginContentUpdateState,
+    pub installer_version: String,
+    pub current_plugin_version: String,
+    pub release: Option<PluginContentReleaseSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginContentInstallOutcome {
+    pub release: PluginContentReleaseSummary,
+    pub operation: OperationOutcome,
+    pub codex_opened: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

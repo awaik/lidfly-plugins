@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CONTENT_RECHECK_INTERVAL_MS,
+  shouldCheckForContentUpdates,
   shouldCheckForUpdates,
   UPDATE_RECHECK_INTERVAL_MS,
 } from "../src/update-policy";
@@ -24,5 +26,20 @@ describe("automatic updater checks", () => {
 
   it("checks when the system clock moved backwards", () => {
     expect(shouldCheckForUpdates(2_000, 1_000)).toBe(true);
+  });
+});
+
+describe("plugin content checks", () => {
+  it("uses an independent fifteen minute timestamp", () => {
+    expect(shouldCheckForContentUpdates(null, 1_000)).toBe(true);
+    expect(
+      shouldCheckForContentUpdates(
+        1_000,
+        1_000 + CONTENT_RECHECK_INTERVAL_MS - 1,
+      ),
+    ).toBe(false);
+    expect(
+      shouldCheckForContentUpdates(1_000, 1_000 + CONTENT_RECHECK_INTERVAL_MS),
+    ).toBe(true);
   });
 });

@@ -54,7 +54,7 @@ npm run dev:frontend
 
 В браузере Tauri commands недоступны; этот режим пригоден только для вёрстки.
 
-Для ручной проверки release UX используйте только подписанную тестовую сборку с отдельным тестовым updater endpoint и ключом. Проверьте: автоматическое обнаружение версии, крупную кнопку, progress, relaunch, синхронизацию bundle, автоматическое открытие Codex и повторное открытие по кнопке. Production key в checkout не копируется.
+Для ручной проверки release UX используйте только подписанную тестовую сборку с отдельными тестовыми updater/content endpoints и ключами. Для installer channel проверьте progress и relaunch. Для content channel — скачивание, проверку, применение без relaunch, открытие Codex и повторное открытие по кнопке. Production keys в checkout не копируются.
 
 ## Unsigned development build
 

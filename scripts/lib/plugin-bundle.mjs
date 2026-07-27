@@ -4,9 +4,10 @@ import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const BUNDLE_SCHEMA_VERSION = 1;
+export const BUNDLE_SCHEMA_VERSION = 2;
 export const GENERATED_SKILLS_MANIFEST_PATH =
   "plugins/lidfly/skills/.lidfly-generated-skills.json";
+export const SKILLS_SOURCE_LOCK_PATH = "plugins/lidfly/skills-source.lock.json";
 export const BUNDLE_BASE_PATHS = Object.freeze([
   ".agents/plugins/marketplace.json",
   "plugins/lidfly/.codex-plugin/plugin.json",
@@ -14,6 +15,7 @@ export const BUNDLE_BASE_PATHS = Object.freeze([
   "plugins/lidfly/assets/icon.svg",
   "plugins/lidfly/assets/logo-dark.svg",
   "plugins/lidfly/assets/logo.svg",
+  SKILLS_SOURCE_LOCK_PATH,
   GENERATED_SKILLS_MANIFEST_PATH,
 ]);
 
@@ -131,6 +133,43 @@ function parseGeneratedSkillsManifest(payload, label) {
   return { payload, records };
 }
 
+function parseSourceLock(payload, label) {
+  if (!isObject(payload)) throw new Error(`${label} must be an object`);
+  assertExactKeys(
+    payload,
+    [
+      "file_count",
+      "schema_version",
+      "skill_count",
+      "skills_tree_sha256",
+      "source",
+    ],
+    label,
+  );
+  if (
+    payload.schema_version !== 1 ||
+    !Number.isSafeInteger(payload.skill_count) ||
+    payload.skill_count <= 0 ||
+    !Number.isSafeInteger(payload.file_count) ||
+    payload.file_count <= 0 ||
+    !SHA256_RE.test(payload.skills_tree_sha256)
+  ) {
+    throw new Error(`${label} contains invalid snapshot metadata`);
+  }
+  if (!isObject(payload.source)) {
+    throw new Error(`${label}.source must be an object`);
+  }
+  assertExactKeys(payload.source, ["commit", "repository"], `${label}.source`);
+  if (
+    payload.source.repository !==
+      "https://github.com/awaik/direct-mcp-ai-project" ||
+    !/^[a-f0-9]{40}$/.test(payload.source.commit)
+  ) {
+    throw new Error(`${label} contains invalid source provenance`);
+  }
+  return payload;
+}
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
@@ -196,6 +235,27 @@ export function validateBundleMetadata(metadata) {
   if (!SHA256_RE.test(metadata.plugin_bundle_sha256)) {
     throw new Error("Bundle plugin_bundle_sha256 must be a lower-case SHA-256");
   }
+  if (!isObject(metadata.source)) {
+    throw new Error("Bundle source metadata must be an object");
+  }
+  assertExactKeys(
+    metadata.source,
+    ["commit", "file_count", "repository", "skill_count", "skills_tree_sha256"],
+    "Bundle source metadata",
+  );
+  parseSourceLock(
+    {
+      schema_version: 1,
+      source: {
+        repository: metadata.source.repository,
+        commit: metadata.source.commit,
+      },
+      skills_tree_sha256: metadata.source.skills_tree_sha256,
+      skill_count: metadata.source.skill_count,
+      file_count: metadata.source.file_count,
+    },
+    "Bundle source metadata",
+  );
   if (
     !Array.isArray(metadata.files) ||
     metadata.files.length !== BUNDLE_PATHS.length
@@ -297,6 +357,36 @@ function validateGeneratedSkills(files) {
       );
     }
   }
+  const sourceLockFile = byPath.get(SKILLS_SOURCE_LOCK_PATH);
+  if (!sourceLockFile) {
+    throw new Error(`Source provenance is missing: ${SKILLS_SOURCE_LOCK_PATH}`);
+  }
+  const sourceLock = parseSourceLock(
+    parseJson(sourceLockFile.bytes, SKILLS_SOURCE_LOCK_PATH),
+    SKILLS_SOURCE_LOCK_PATH,
+  );
+  const treeDigest = createHash("sha256");
+  for (const expected of bundledSkills.records) {
+    const file = byPath.get(expected.path);
+    treeDigest.update(
+      expected.path.replace("plugins/lidfly/skills/", ""),
+      "utf8",
+    );
+    treeDigest.update("\0");
+    treeDigest.update(String(file.bytes.byteLength), "ascii");
+    treeDigest.update("\0");
+    treeDigest.update(expected.sha256, "ascii");
+    treeDigest.update("\0");
+  }
+  if (
+    sourceLock.skill_count !==
+      Object.keys(bundledSkills.payload.skills).length ||
+    sourceLock.file_count !== bundledSkills.records.length ||
+    sourceLock.skills_tree_sha256 !== treeDigest.digest("hex")
+  ) {
+    throw new Error("Source provenance does not match generated skills");
+  }
+  return sourceLock;
 }
 
 function validatePluginDocuments(files) {
@@ -407,7 +497,7 @@ export async function inspectSourceBundle(repositoryRoot) {
       `Plugin skills differ from generated allowlist: ${actualSkillPaths.join(", ")}`,
     );
   }
-  validateGeneratedSkills(files);
+  const source = validateGeneratedSkills(files);
   const documents = validatePluginDocuments(files);
   const records = files.map((file) => ({
     path: file.path,
@@ -418,6 +508,13 @@ export async function inspectSourceBundle(repositoryRoot) {
     schema_version: BUNDLE_SCHEMA_VERSION,
     plugin_version: documents.plugin.version,
     plugin_bundle_sha256: bundleDigest(files),
+    source: {
+      repository: source.source.repository,
+      commit: source.source.commit,
+      skills_tree_sha256: source.skills_tree_sha256,
+      skill_count: source.skill_count,
+      file_count: source.file_count,
+    },
     files: records,
   };
   validateBundleMetadata(metadata);
@@ -444,7 +541,17 @@ export async function inspectBuiltBundle(bundleRoot, metadataPath) {
       throw new Error(`Plugin bundle file mismatch: ${file.path}`);
     }
   }
-  validateGeneratedSkills(files);
+  const source = validateGeneratedSkills(files);
+  const expectedSource = {
+    repository: source.source.repository,
+    commit: source.source.commit,
+    skills_tree_sha256: source.skills_tree_sha256,
+    skill_count: source.skill_count,
+    file_count: source.file_count,
+  };
+  if (stableJson(metadata.source) !== stableJson(expectedSource)) {
+    throw new Error("Built bundle provenance differs from bundle metadata");
+  }
   validatePluginDocuments(files);
   return { files, metadata };
 }

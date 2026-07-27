@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import path from "node:path";
 import process from "node:process";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { verifyReleaseArtifacts } from "./lib/release-contract.mjs";
@@ -42,6 +43,9 @@ function parseArgs(argv) {
       args.skipUpdaterSignatures = true;
     } else throw new Error(`Unknown argument: ${argument}`);
   }
+  if (!/^\d+\.\d+\.\d+$/.test(args.version)) {
+    throw new Error("--version is required and must use X.Y.Z");
+  }
   if (!args.artifactsDir) throw new Error("--artifacts-dir is required");
   if (!args.pluginMetadataPath) {
     args.pluginMetadataPath = path.join(
@@ -53,8 +57,28 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2));
+const releaseMetadata = JSON.parse(
+  await readFile(
+    path.join(repositoryRoot, `releases/${args.version}.json`),
+    "utf8",
+  ),
+);
+const embeddedPluginVersion =
+  releaseMetadata.schemaVersion === 2 &&
+  releaseMetadata.installer?.version === args.version
+    ? releaseMetadata.embeddedPlugin?.version
+    : releaseMetadata.schemaVersion === 1 &&
+        releaseMetadata.plugin?.version === args.version
+      ? releaseMetadata.plugin.version
+      : null;
+if (!/^\d+\.\d+\.\d+$/.test(embeddedPluginVersion ?? "")) {
+  throw new Error(
+    `releases/${args.version}.json does not define this installer build`,
+  );
+}
 const result = await verifyReleaseArtifacts({
   ...args,
+  embeddedPluginVersion,
   repositoryRoot,
   updaterPublicKey: process.env.TAURI_UPDATER_PUBLIC_KEY,
 });

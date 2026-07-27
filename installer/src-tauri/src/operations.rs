@@ -15,7 +15,8 @@ use crate::models::{
     ClientError, FileCondition, FileStatus, InstallerPhase, InstallerStatus, OperationOutcome,
 };
 use crate::state::{
-    read_state, validate_managed_mirror, InstalledState, ManagedFilesState, STATE_SCHEMA_VERSION,
+    read_state, validate_managed_mirror, InstalledState, ManagedFilesState,
+    MANAGED_STATE_SCHEMA_VERSION, STATE_SCHEMA_VERSION,
 };
 
 const CONTROL_DIRECTORY: &str = ".lidfly-installer";
@@ -363,6 +364,8 @@ impl InstallerCore {
                 app_version: self.app_version.clone(),
                 embedded_plugin_version: self.bundle.metadata.plugin_version.clone(),
                 installed_plugin_version: installed_version,
+                bundle_origin: self.bundle.origin.clone(),
+                source_commit: self.bundle.metadata.source.commit.clone(),
                 plugin_bundle_sha256: self.bundle.metadata.plugin_bundle_sha256.clone(),
                 marketplace_path: self
                     .layout
@@ -567,10 +570,14 @@ impl InstallerCore {
             plugin_version: self.bundle.metadata.plugin_version.clone(),
             plugin_bundle_sha256: self.bundle.metadata.plugin_bundle_sha256.clone(),
             installed_at: Utc::now().to_rfc3339(),
+            bundle_origin: self.bundle.origin.clone(),
+            source_repository: Some(self.bundle.metadata.source.repository.clone()),
+            source_commit: Some(self.bundle.metadata.source.commit.clone()),
+            content_key_id: self.bundle.content_key_id.clone(),
             managed_files: self.bundle.metadata.files.clone(),
         };
         let managed_state = ManagedFilesState {
-            schema_version: STATE_SCHEMA_VERSION,
+            schema_version: MANAGED_STATE_SCHEMA_VERSION,
             files: self.bundle.metadata.files.clone(),
         };
         let managed_prepared = prepared_root.join("managed-files.json");
@@ -1193,7 +1200,7 @@ impl InstallerCore {
         write_secure_file(
             &new_managed,
             &serde_json::to_vec_pretty(&ManagedFilesState {
-                schema_version: STATE_SCHEMA_VERSION,
+                schema_version: MANAGED_STATE_SCHEMA_VERSION,
                 files: remaining.to_vec(),
             })?,
         )?;

@@ -18,15 +18,17 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ -z "$ARTIFACTS_DIR" ]]; 
   exit 1
 fi
 
-for name in APPLE_SIGNING_IDENTITY APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY_PATH TAURI_UPDATER_PUBLIC_KEY_PATH; do
+REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+for name in APPLE_SIGNING_IDENTITY APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY_PATH TAURI_UPDATER_PUBLIC_KEY_PATH LIDFLY_PLUGIN_CONTENT_PUBLIC_KEY_BASE64; do
   if [[ -z "${!name:-}" ]]; then
     echo "Missing local release setting: $name" >&2
     exit 1
   fi
 done
+export LIDFLY_PLUGIN_CONTENT_PUBLIC_KEY_BASE64
+node "$REPOSITORY_ROOT/scripts/validate-plugin-content-public-key.mjs"
 
 NOTARYTOOL_PROFILE="${NOTARYTOOL_PROFILE:-glas-notary}"
-REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALLER_ROOT="$REPOSITORY_ROOT/installer"
 ARTIFACTS_DIR="$(mkdir -p "$ARTIFACTS_DIR" && cd "$ARTIFACTS_DIR" && pwd)"
 RELEASE_TEMP_DIR="$(mktemp -d)"
@@ -72,7 +74,7 @@ cd "$INSTALLER_ROOT"
 npm ci
 npm run bundle:plugin
 npm run bundle:plugin:verify
-npm run version:check
+npm run version:check -- --installer-build
 test "$(node -p "require('./package.json').version")" = "$VERSION"
 node ../scripts/write-release-tauri-config.mjs "$RELEASE_CONFIG"
 

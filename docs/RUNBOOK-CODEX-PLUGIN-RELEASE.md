@@ -1,212 +1,184 @@
-# Релиз плагина LidFly для Codex
+# Релизы установщика и plugin content LidFly
 
-Этот runbook хранит весь release-процесс плагина в репозитории `lidfly-plugins`. Состояние каждого выпуска фиксируется в `releases/<version>.json`, а `releases/latest.json` указывает только на последний полностью опубликованный и проверенный выпуск.
+Репозиторий использует два независимых release-канала. Этот документ не даёт сам по себе разрешения на commit, push, tag, подпись, GitHub Release или production-публикацию.
 
-## Источники истины
+## Контракты
 
-- `plugins/lidfly/.codex-plugin/plugin.json` — текущая версия и manifest плагина.
-- `plugins/lidfly/skills/` — публичные встроенные скиллы; `.lidfly-generated-skills.json` фиксирует их пути и SHA-256.
-- `.agents/plugins/marketplace.json` — стабильные имена marketplace и плагина, путь `./plugins/lidfly` и политика установки.
-- `releases/<version>.json` — версионированная release metadata.
-- `releases/latest.json` — metadata последнего доступного установщика. Этот файл создаёт только `scripts/manage-release-metadata.mjs --promote`.
-- GitHub Release `awaik/lidfly-plugins` — публичное место для бинарных установщиков. Бинарники и подписи не коммитятся в Git.
+- Installer: версия приложения, tag `installer-vX.Y.Z`, metadata `releases/X.Y.Z.json`, guarded `releases/latest.json`, Tauri updater.
+- Plugin content: версия manifest/skills, tag `plugin-vX.Y.Z`, metadata `plugin-releases/X.Y.Z.json`, guarded `plugin-releases/latest.json`.
+- Legacy tags `v1.0.x` и `v1.1.0` остаются без изменений.
+- Первый installer с content updater — `1.2.0`.
+- Plugin content требует `min_installer_version >= 1.2.0`.
+- Стабильные идентификаторы `lidfly`, `./plugins/lidfly` и `https://lidfly.ru/mcp/v3` не меняются.
 
-Codex CLI устанавливает плагин из marketplace и не использует `releases/latest.json`. Установщик для macOS или Windows тоже не устанавливает плагин сам: он готовит проверенную локальную копию marketplace в `app_data_dir` и открывает её карточку через `codex://`. Установку плагина и OAuth пользователь подтверждает отдельно в Codex.
+`node scripts/check-versions.mjs` проверяет installer и plugin как две отдельные SemVer-линии. Installer metadata schema 2 хранит `installer.version` и `embeddedPlugin.version`; их равенство не требуется. Только реальная сборка installer вызывает `npm run version:check -- --installer-build` и требует, чтобы текущий bundle точно совпадал с зафиксированной embedded version.
 
-Обновление работает так же: Tauri updater автоматически обнаруживает новый подписанный установщик, после relaunch приложение синхронизирует embedded bundle и открывает карточку LidFly. Пользователь подтверждает обновление в Codex и начинает новый чат. Для CLI-пользователей release notes и README должны указывать обе команды: `codex plugin marketplace upgrade lidfly`, затем `codex plugin add lidfly@lidfly`.
+## Синхронизация canonical skills
 
-Версия 1.0.1 была выпущена до автоматической проверки при запуске. В release announcement для 1.1.0 обязательно указать одноразовый переход: открыть старый установщик и нажать «Проверить обновления». Начиная с 1.1.0 дальнейшие версии обнаруживаются при запуске и каждые 15 минут, пока окно открыто.
+Источник — `awaik/direct-mcp-ai-project/skills-source`. Workflow source-репозитория получает короткоживущий GitHub App token, пересобирает `automation/sync-skills` от актуального `main` и создаёт или обновляет один rolling PR.
 
-Этот runbook описывает marketplace publication metadata. Сборка, platform signing, пять обязательных installer/updater artifacts и handoff в `direct-mcp` описаны отдельно в `docs/INSTALLER-RELEASE.md`; эти два контракта нельзя подменять друг другом.
+Automation может менять только:
 
-## Состояния metadata
+- `plugins/lidfly/skills/**`;
+- `plugins/lidfly/skills-source.lock.json`;
+- `plugins/lidfly/.codex-plugin/plugin.json`;
+- один draft `plugin-releases/<next-patch>.json`.
 
-У плагина и установщиков независимые состояния:
+Неизменившийся tree digest не создаёт diff и не повышает версию. Изменённая вручную generated copy останавливает sync. После merge PR content release остаётся ручной подписанной операцией.
 
-| Поле                 | Значение      | Смысл                                                                                                     |
-| -------------------- | ------------- | --------------------------------------------------------------------------------------------------------- |
-| `publication.status` | `draft`       | Git tag и GitHub Release ещё не опубликованы. `commit` и `publishedAt` равны `null`.                      |
-| `publication.status` | `published`   | Tag существует, `commit` содержит полный SHA tag commit, `publishedAt` — время публикации GitHub Release. |
-| `installers.status`  | `unpublished` | Публичных установщиков нет, `artifacts` обязан быть пустым.                                               |
-| `installers.status`  | `published`   | В GitHub Release доступны оба подписанных установщика с проверенными размером и SHA-256.                  |
-
-`releases/latest.json` может указывать только на metadata со значениями `published / published`. Обратный порядок безопасен: GitHub Release и его файлы сначала становятся доступны, затем появляется `latest.json`. Нельзя публиковать `latest.json` заранее.
-
-## Подготовка версии
-
-1. Убедись, что задача явно разрешает релизные действия. Commit, push, tag, GitHub Release, подпись и production-публикация не подразумеваются обычным изменением кода.
-2. Проверь рабочее дерево и не трогай незнакомые изменения:
-
-   ```sh
-   git status --short
-   ```
-
-3. Обнови `version` в `plugins/lidfly/.codex-plugin/plugin.json`.
-4. Скопируй metadata предыдущей версии в `releases/<version>.json` и верни её в безопасное начальное состояние:
-
-   ```json
-   {
-     "publication": {
-       "status": "draft",
-       "tag": "v<version>",
-       "commit": null,
-       "publishedAt": null
-     },
-     "installers": {
-       "status": "unpublished",
-       "artifacts": []
-     }
-   }
-   ```
-
-   Это сокращённый пример. Остальные обязательные поля нужно сохранить по текущему файлу metadata.
-
-5. Проверь синхронизацию manifest, marketplace, MCP и metadata:
-
-   ```sh
-   node scripts/manage-release-metadata.mjs --check
-   ```
-
-Скрипт по умолчанию читает версию из manifest и требует файл `releases/<version>.json`. Стабильные значения должны оставаться такими:
-
-- plugin и marketplace: `lidfly`;
-- repository: `https://github.com/awaik/lidfly-plugins`;
-- plugin path: `./plugins/lidfly`;
-- MCP transport и URL: `http`, `https://lidfly.ru/mcp/v3`.
-
-## Релиз только для CLI
-
-Плагин можно опубликовать для установки через CLI без установщиков:
-
-1. Выполни все проверки из раздела «Финальная проверка».
-2. Только по прямому запросу создай commit, push и tag `v<version>`, затем GitHub Release.
-3. Запиши в `releases/<version>.json`:
-   - `publication.status: "published"`;
-   - полный lowercase SHA commit, на который указывает tag;
-   - UTC-время публикации в `publication.publishedAt`.
-4. Оставь `installers.status: "unpublished"` и пустой `artifacts`.
-5. Снова выполни `node scripts/manage-release-metadata.mjs --check`.
-
-В таком состоянии README обязан оставлять Codex CLI основным способом и явно говорить, что установщики ещё не опубликованы. `releases/latest.json` не создаётся.
-
-## Подготовка установщиков
-
-Переход к установщикам — отдельная release-задача. Если исходники сборки, signing identity или процесс notarization не входят в подтверждённую область задачи, остановись и запроси решение.
-
-Перед загрузкой каждого файла проверь:
-
-- установщик добавляет только marketplace `awaik/lidfly-plugins`;
-- установка плагина и OAuth не выполняются скрыто или автоматически;
-- macOS-сборка подписана Developer ID и notarized;
-- Windows-сборка следует схеме Glas: Authenticode отсутствует, а detached Tauri updater `.sig` проверена по финальному EXE;
-- в артефактах нет токенов, ключей, приватных hostname и пользовательских данных;
-- автопроверка видит versioned updater manifest, крупная кнопка запускает download/install, а после relaunch новый bundle открывается в Codex;
-- бинарники не добавлены в Git, а загружаются как assets GitHub Release `v<version>`.
-
-Обязательные платформы metadata:
-
-- `macos-universal`;
-- `windows-x86_64`.
-
-Для каждого файла вычисли точный размер и SHA-256 после подписи и notarization:
+## Локальная проверка
 
 ```sh
-wc -c < path/to/installer
-shasum -a 256 path/to/installer
+cd installer
+npm run ci:local
 ```
 
-После публикации GitHub Release заполни `installers` в `releases/<version>.json`:
-
-```json
-{
-  "status": "published",
-  "artifacts": [
-    {
-      "platform": "macos-universal",
-      "filename": "<published-file>.dmg",
-      "url": "https://github.com/awaik/lidfly-plugins/releases/download/v<version>/<published-file>.dmg",
-      "size": 123,
-      "sha256": "<64 lowercase hex characters>"
-    },
-    {
-      "platform": "windows-x86_64",
-      "filename": "<published-file>.exe",
-      "url": "https://github.com/awaik/lidfly-plugins/releases/download/v<version>/<published-file>.exe",
-      "size": 123,
-      "sha256": "<64 lowercase hex characters>"
-    }
-  ]
-}
-```
-
-Значения `filename`, `size`, `sha256` и URL должны описывать уже опубликованные файлы, а не ожидаемый результат будущей сборки.
-
-## Guarded `latest.json`
-
-Единственный штатный способ создать или обновить `releases/latest.json`:
+Минимум:
 
 ```sh
-node scripts/manage-release-metadata.mjs --promote
+npm run bundle:plugin
+npm run bundle:plugin:verify
+npm run version:check
+npm run test
+npm run check
 ```
 
-Перед атомарной записью скрипт:
+Перед DMG/EXE дополнительно обязательно:
 
-1. проверяет manifest, marketplace, MCP и release metadata;
-2. отклоняет `draft` и `unpublished`;
-3. проверяет, что локальный tag указывает на `publication.commit`;
-4. скачивает оба установщика по публичным HTTPS URL;
-5. сверяет реальный размер и SHA-256 каждого файла;
-6. записывает `releases/latest.json` как точную копию `releases/<version>.json`.
+```sh
+npm run version:check -- --installer-build
+```
 
-После promotion:
+## Installer release
+
+Installer release выполняется по `docs/INSTALLER-RELEASE.md`. Tag и GitHub Release:
+
+```text
+installer-vX.Y.Z
+```
+
+В release входят DMG, macOS updater archive и `.sig`, Windows installer и `.sig`, `SHA256SUMS.txt`, `plugin-bundle-files.json` и `release-handoff.json`. Embedded bundle version фиксируется отдельно в handoff и `releases/X.Y.Z.json`.
+
+После platform signing/notarization и публикации:
 
 ```sh
 node scripts/manage-release-metadata.mjs --check
-git diff --check
-git status --short
+node scripts/manage-release-metadata.mjs --promote
 ```
 
-Затем, только по прямому запросу, metadata и `latest.json` можно commit/push. Публичный URL после push в `main`:
+`--promote` разрешён только для опубликованного tag и проверенных публичных installer artifacts. `releases/latest.json` вручную не редактируется.
 
-```text
-https://raw.githubusercontent.com/awaik/lidfly-plugins/main/releases/latest.json
-```
+## Plugin content signing key
 
-README можно переключать с «скоро» на установщики только после успешного promotion, push и проверки публичного `latest.json` и обеих ссылок на скачивание.
+Используется отдельная Ed25519 keypair:
 
-## Откат `latest.json`
+- private PKCS#8 PEM хранится только в защищённом локальном хранилище release-машины;
+- raw 32-byte public key в base64 встраивается в installer через compile-time `LIDFLY_PLUGIN_CONTENT_PUBLIC_KEY_BASE64`;
+- тот же public key задаётся в production verifier `direct-mcp`;
+- key id текущей линии: `lidfly-plugin-content-2026-01`.
 
-Не перемещай существующий tag, не заменяй assets под прежними именами и не переписывай versioned metadata опубликованного релиза. Для отката выбери предыдущий проверенный файл:
+Tauri updater key для plugin content не используется. При ротации сначала выпускается installer с новым public key, затем новый key начинает подписывать content.
+
+## Сборка plugin content
+
+`plugin-releases/<version>.json` последовательно имеет два явных состояния:
+
+- sync automation создаёт draft с `status: "draft"`, `min_installer_version`, `plugin` и `source`; это вход для ручного релиза, а не публичный content manifest, поэтому он намеренно не проходит `validateContentManifest`;
+- `build-plugin-content-release.mjs` сверяет identity и provenance draft, затем атомарно заменяет его полным подписываемым manifest без поля `status`, но с `published_at`, `bundle` и `key_id`. Только этот второй формат допускается к verify и promotion.
+
+Из чистого checkout после merge sync-PR:
 
 ```sh
-node scripts/manage-release-metadata.mjs \
-  --file releases/<previous-version>.json \
-  --promote
+cd installer
+npm run release:content:build -- \
+  --private-key /protected/lidfly-plugin-content-ed25519.pem \
+  --output /absolute/output/plugin-X.Y.Z \
+  --published-at 2026-07-27T00:00:00Z \
+  --min-installer-version 1.2.0
 ```
 
-Скрипт повторно проверит tag, скачает старые публичные assets и атомарно заменит только локальный `releases/latest.json`. Commit/push отката также требует прямого запроса пользователя.
+Скрипт создаёт:
+
+```text
+LidFly_Codex_Plugin_X.Y.Z_<sha-prefix>.tar.gz
+LidFly_Codex_Plugin_X.Y.Z_<sha-prefix>.tar.gz.sig
+release.json
+release.json.sig
+release-handoff.json
+```
+
+Archive детерминирован: отсортированные regular files, uid/gid/mtime 0, gzip mtime 0. Внутри находятся `plugin-bundle/` и `plugin-bundle-files.json`. Manifest связывает версию, source commit/tree digest, min installer version, filename, URL, size, SHA-256 и key id.
+
+Повторная проверка:
+
+```sh
+npm run release:content:verify -- \
+  --directory /absolute/output/plugin-X.Y.Z \
+  --public-key /protected/lidfly-plugin-content-ed25519.pub.pem
+```
+
+## Tag и GitHub Release plugin content
+
+Только после прямого разрешения:
+
+```sh
+git tag plugin-vX.Y.Z
+git push origin plugin-vX.Y.Z
+gh release create plugin-vX.Y.Z \
+  --repo awaik/lidfly-plugins \
+  --verify-tag \
+  --title "LidFly plugin content X.Y.Z" \
+  /absolute/output/plugin-X.Y.Z/LidFly_Codex_Plugin_X.Y.Z_*.tar.gz \
+  /absolute/output/plugin-X.Y.Z/LidFly_Codex_Plugin_X.Y.Z_*.tar.gz.sig \
+  /absolute/output/plugin-X.Y.Z/release.json \
+  /absolute/output/plugin-X.Y.Z/release.json.sig \
+  /absolute/output/plugin-X.Y.Z/release-handoff.json
+```
+
+Guarded repository metadata создаётся только script:
+
+```sh
+npm run release:content:promote -- \
+  --directory /absolute/output/plugin-X.Y.Z \
+  --public-key /protected/lidfly-plugin-content-ed25519.pub.pem
+```
+
+`plugin-releases/latest.json` и `.sig` вручную не создаются.
+
+## Handoff в direct-mcp
+
+Production route и atomic publication находятся в `direct-mcp`. Обычный content release не требует пересборки DMG/EXE и app deploy. Порядок:
+
+1. развернуть route `/codex-plugin-content` без feed;
+2. выпустить installer 1.2.0 с public key;
+3. передать четыре immutable/signed файла и handoff в `direct-mcp`;
+4. verifier копирует immutable artifacts и signed release metadata первыми, затем одним atomic rename переключает внутренний active pointer; публичные `latest.json`/`.sig` читаются через него;
+5. выполнить GET/HEAD smoke.
+
+Не публиковать feed, пока installer и production verifier не содержат один и тот же public key.
+Пользовательский раздел README про независимый content-канал обновляется только после promotion installer 1.2.0 и успешного smoke публичного feed. Draft metadata или готовый, но ещё не опубликованный код не считаются доступной пользователю функцией.
+
+## Rollback
+
+Remote downgrade запрещён. Плохую версию не заменяют и feed назад не понижают. Выпускается новая patch-версия с содержимым последнего исправного bundle:
+
+```text
+bad: 1.2.4
+forward rollback: 1.2.5
+```
+
+До применения можно заморозить/убрать stable feed; уже установленный verified plugin продолжит работать. Immutable artifacts и опубликованные tags не удаляются и не переписываются.
 
 ## Финальная проверка
 
 ```sh
-node -e 'const fs=require("node:fs"); for (const file of [".agents/plugins/marketplace.json","plugins/lidfly/.codex-plugin/plugin.json","plugins/lidfly/.mcp.json"]) JSON.parse(fs.readFileSync(file,"utf8")); console.log("JSON ok")'
+node -e 'const fs=require("node:fs"); for (const file of [".agents/plugins/marketplace.json","plugins/lidfly/.codex-plugin/plugin.json","plugins/lidfly/.mcp.json","plugins/lidfly/skills-source.lock.json"]) JSON.parse(fs.readFileSync(file,"utf8")); console.log("JSON ok")'
 node scripts/manage-release-metadata.mjs --check
 test -f plugins/lidfly/assets/icon.svg
 test -f plugins/lidfly/assets/logo.svg
 test -f plugins/lidfly/assets/logo-dark.svg
-test -f plugins/lidfly/skills/.lidfly-generated-skills.json
-test -f plugins/lidfly/skills/yandex-direct-campaign-builder/SKILL.md
 git diff --check
 git status --short
 ```
 
-Дополнительно проверь, что diff не содержит `.DS_Store`, бинарных installer-файлов, подписей, секретов и локальных абсолютных путей.
-
-## Жёсткие правила
-
-- Не создавай `releases/latest.json` вручную.
-- Не публикуй `latest.json`, если хотя бы один установщик отсутствует или не совпадает по размеру/SHA-256.
-- Не публикуй установщик до code signing и platform verification.
-- Не меняй стабильные идентификаторы `lidfly`, путь `./plugins/lidfly` и MCP URL.
-- Не увеличивай версию только в manifest: для неё всегда нужен `releases/<version>.json`.
-- Не выполняй commit, push, tag, GitHub Release, подпись или deploy без прямого запроса пользователя.
+В Git не должны попадать private keys, signatures/content archives вне явной release-задачи, installer binaries, credentials, `.DS_Store` или локальные абсолютные пути.

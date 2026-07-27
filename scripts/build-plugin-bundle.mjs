@@ -34,7 +34,7 @@ async function removePreviousGeneratedFiles() {
   try {
     const previousMetadata = JSON.parse(await readFile(metadataPath, "utf8"));
     if (
-      previousMetadata?.schema_version !== 1 ||
+      ![1, 2].includes(previousMetadata?.schema_version) ||
       !Array.isArray(previousMetadata.files)
     ) {
       throw new Error("Previous plugin bundle metadata is invalid");

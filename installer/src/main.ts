@@ -7,8 +7,16 @@ import {
 } from "@tauri-apps/plugin-updater";
 
 import "./styles.css";
-import type { ClientError, InstallerStatus, OperationOutcome } from "./types";
+import type {
+  ClientError,
+  InstallerStatus,
+  OperationOutcome,
+  PluginContentInstallOutcome,
+  PluginContentUpdateStatus,
+} from "./types";
 import {
+  CONTENT_RECHECK_INTERVAL_MS,
+  shouldCheckForContentUpdates,
   shouldCheckForUpdates,
   UPDATE_RECHECK_INTERVAL_MS,
 } from "./update-policy";
@@ -38,6 +46,19 @@ app.innerHTML = `
         <li><span>2</span><p>Откроется Codex — там нужно нажать штатную кнопку установки и войти по email.</p></li>
         <li><span>3</span><p>Полностью перезапустите Codex и начните новый чат.</p></li>
       </ol>
+    </section>
+
+    <section id="plugin-update-panel" class="plugin-update-panel" aria-live="polite" hidden>
+      <div class="update-symbol" aria-hidden="true">↓</div>
+      <div class="update-copy">
+        <div class="eyebrow">Обновление плагина</div>
+        <h2 id="plugin-update-title">Доступны новые скиллы LidFly</h2>
+        <p id="plugin-update-message">Обновление не требует перезапуска установщика.</p>
+        <progress id="plugin-update-progress" class="update-progress" hidden></progress>
+      </div>
+      <button id="install-plugin-update" class="button button-update">
+        Обновить плагин
+      </button>
     </section>
 
     <section id="update-panel" class="update-panel" aria-live="polite" hidden>
@@ -112,6 +133,11 @@ const elements = {
   updateMessage: required("update-message"),
   updateProgress: requiredProgress("update-progress"),
   installUpdate: requiredButton("install-update"),
+  pluginUpdatePanel: required("plugin-update-panel"),
+  pluginUpdateTitle: required("plugin-update-title"),
+  pluginUpdateMessage: required("plugin-update-message"),
+  pluginUpdateProgress: requiredProgress("plugin-update-progress"),
+  installPluginUpdate: requiredButton("install-plugin-update"),
   codexUpdatePanel: required("codex-update-panel"),
   codexUpdateTitle: required("codex-update-title"),
   codexUpdateMessage: required("codex-update-message"),
@@ -128,9 +154,12 @@ const elements = {
 
 let currentStatus: InstallerStatus | null = null;
 let availableUpdate: Update | null = null;
+let pluginContentStatus: PluginContentUpdateStatus | null = null;
 let busy = false;
 let lastUpdateCheckAt: number | null = null;
+let lastContentCheckAt: number | null = null;
 let updateCheckInFlight: Promise<void> | null = null;
+let contentCheckInFlight: Promise<void> | null = null;
 
 function required(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -182,6 +211,7 @@ function setBusy(value: boolean): void {
     elements.openCodex,
     elements.repair,
     elements.installUpdate,
+    elements.installPluginUpdate,
     elements.finishUpdate,
     elements.verify,
     elements.update,
@@ -198,8 +228,34 @@ function resetUpdateTool(): void {
   const label = elements.update.querySelector("b");
   if (label) label.textContent = "Проверить обновления";
   elements.updateCaption.textContent = currentStatus
-    ? `Установлена ${currentStatus.appVersion}`
-    : "Версия приложения";
+    ? `Приложение ${currentStatus.appVersion} · плагин ${currentStatus.embeddedPluginVersion}`
+    : "Версии приложения и плагина";
+}
+
+function renderPluginContentStatus(status: PluginContentUpdateStatus): void {
+  pluginContentStatus = status;
+  const release = status.release;
+  if (status.state === "up_to_date" || !release) {
+    elements.pluginUpdatePanel.hidden = true;
+    if (!availableUpdate) resetUpdateTool();
+    return;
+  }
+  elements.pluginUpdatePanel.hidden = false;
+  elements.pluginUpdatePanel.classList.remove("is-downloading");
+  elements.pluginUpdateProgress.hidden = true;
+  elements.pluginUpdateTitle.textContent =
+    status.state === "requires_installer_update"
+      ? `Плагин ${release.pluginVersion} требует новый установщик`
+      : `Доступен плагин ${release.pluginVersion}`;
+  elements.pluginUpdateMessage.textContent =
+    status.state === "requires_installer_update"
+      ? `Сначала обновите приложение до ${release.minInstallerVersion} или новее. Текущая установка продолжит работать.`
+      : "Скачаем подписанный bundle, проверим файлы и откроем Codex для штатного подтверждения.";
+  elements.installPluginUpdate.textContent =
+    status.state === "requires_installer_update"
+      ? "Сначала обновить установщик"
+      : `Обновить плагин до ${release.pluginVersion}`;
+  elements.installPluginUpdate.disabled = busy || status.state !== "available";
 }
 
 function showAvailableUpdate(update: Update): void {
@@ -291,8 +347,7 @@ function escapeHtml(value: string): string {
 function renderStatus(status: InstallerStatus): void {
   currentStatus = status;
   elements.version.textContent = `v${status.appVersion}`;
-  if (!availableUpdate)
-    elements.updateCaption.textContent = `Установлена ${status.appVersion}`;
+  if (!availableUpdate) resetUpdateTool();
   elements.statusDot.className = "status-dot";
   const statusCopy: Record<
     InstallerStatus["phase"],
@@ -449,7 +504,7 @@ elements.update.addEventListener("click", () => {
   if (availableUpdate) {
     void installAvailableUpdate(availableUpdate).finally(() => setBusy(false));
   } else {
-    void requestUpdateCheck(true).finally(() => setBusy(false));
+    void requestAllUpdateChecks(true).finally(() => setBusy(false));
   }
 });
 
@@ -458,6 +513,11 @@ elements.installUpdate.addEventListener("click", () => {
   clearNotice();
   setBusy(true);
   void installAvailableUpdate(availableUpdate).finally(() => setBusy(false));
+});
+
+elements.installPluginUpdate.addEventListener("click", () => {
+  if (busy || pluginContentStatus?.state !== "available") return;
+  void installPluginContentUpdate();
 });
 
 elements.finishUpdate.addEventListener("click", () => {
@@ -494,6 +554,23 @@ function requestUpdateCheck(announceResult: boolean): Promise<void> {
   return updateCheckInFlight;
 }
 
+function requestContentCheck(announceResult: boolean): Promise<void> {
+  if (contentCheckInFlight) return contentCheckInFlight;
+  contentCheckInFlight = checkPluginContentUpdates(announceResult).finally(
+    () => {
+      contentCheckInFlight = null;
+    },
+  );
+  return contentCheckInFlight;
+}
+
+async function requestAllUpdateChecks(announceResult: boolean): Promise<void> {
+  await Promise.all([
+    requestUpdateCheck(announceResult),
+    requestContentCheck(announceResult),
+  ]);
+}
+
 async function checkForUpdates(announceResult: boolean): Promise<void> {
   lastUpdateCheckAt = Date.now();
   if (!availableUpdate) elements.updateCaption.textContent = "Проверяем…";
@@ -522,6 +599,108 @@ async function checkForUpdates(announceResult: boolean): Promise<void> {
         `${mapped.title}. ${mapped.message}`,
         mapped.kind === "not_found" ? "warning" : "error",
       );
+  }
+}
+
+async function checkPluginContentUpdates(
+  announceResult: boolean,
+): Promise<void> {
+  lastContentCheckAt = Date.now();
+  try {
+    const status = await invoke<PluginContentUpdateStatus>(
+      announceResult
+        ? "retry_plugin_content_update"
+        : "check_plugin_content_update",
+    );
+    renderPluginContentStatus(status);
+    if (announceResult) {
+      if (status.state === "available" && status.release) {
+        showNotice(
+          `Доступен плагин ${status.release.pluginVersion}. Установщик обновлять не нужно.`,
+        );
+      } else if (status.state === "requires_installer_update") {
+        showNotice(
+          "Для новой версии плагина сначала требуется обновление установщика.",
+          "warning",
+        );
+      } else if (!availableUpdate) {
+        showNotice("Приложение и плагин обновлены до актуальных версий.");
+      }
+    }
+  } catch (error) {
+    const clientError = asClientError(error);
+    const securityFailure = [
+      "content_signature_mismatch",
+      "invalid_content_signature",
+      "invalid_content_manifest",
+      "invalid_content_public_key",
+    ].includes(clientError.code);
+    if (announceResult || securityFailure) {
+      showNotice(
+        `Проверка обновления плагина не выполнена. ${clientError.message} Установленная версия продолжит работать.`,
+        securityFailure ? "error" : "warning",
+      );
+    }
+  }
+}
+
+async function installPluginContentUpdate(): Promise<void> {
+  if (busy || pluginContentStatus?.state !== "available") return;
+  clearNotice();
+  setBusy(true);
+  elements.pluginUpdatePanel.classList.add("is-downloading");
+  elements.pluginUpdateProgress.hidden = false;
+  elements.pluginUpdateProgress.removeAttribute("value");
+  elements.pluginUpdateMessage.textContent =
+    "Скачиваем bundle и проверяем подпись, SHA-256 и структуру файлов…";
+  try {
+    let outcome: PluginContentInstallOutcome;
+    try {
+      outcome = await invoke<PluginContentInstallOutcome>(
+        "install_plugin_content_update",
+        { allowModified: false },
+      );
+    } catch (error) {
+      const clientError = asClientError(error);
+      if (
+        clientError.code !== "modified_files_confirmation_required" ||
+        !window.confirm(
+          "Локальные managed-файлы изменены. Сохранить backup и заменить их подписанной версией?",
+        )
+      ) {
+        throw error;
+      }
+      outcome = await invoke<PluginContentInstallOutcome>(
+        "install_plugin_content_update",
+        { allowModified: true },
+      );
+    }
+    renderStatus(outcome.operation.status);
+    pluginContentStatus = {
+      state: "up_to_date",
+      installerVersion: outcome.operation.status.appVersion,
+      currentPluginVersion: outcome.release.pluginVersion,
+      release: outcome.release,
+    };
+    elements.pluginUpdatePanel.hidden = true;
+    showCodexUpdateReady(outcome.release.pluginVersion, outcome.codexOpened);
+    const backup = outcome.operation.backupDirectory
+      ? ` Backup: ${outcome.operation.backupDirectory}.`
+      : "";
+    showNotice(
+      `Плагин ${outcome.release.pluginVersion} подготовлен.${outcome.codexOpened ? " Подтвердите обновление в Codex" : " Откройте Codex вручную и подтвердите обновление"}, затем полностью перезапустите Codex.${backup}`,
+    );
+  } catch (error) {
+    const clientError = asClientError(error);
+    elements.pluginUpdatePanel.classList.remove("is-downloading");
+    elements.pluginUpdateProgress.hidden = true;
+    elements.pluginUpdateMessage.textContent =
+      "Обновление не применено. Текущая проверенная версия сохранена.";
+    showNotice(clientError.message, "error");
+    await refreshStatus().catch(() => undefined);
+  } finally {
+    setBusy(false);
+    if (pluginContentStatus) renderPluginContentStatus(pluginContentStatus);
   }
 }
 
@@ -596,17 +775,21 @@ async function initialize(): Promise<void> {
     setBusy(false);
   }
   if (synced) await openCodex(true);
-  void requestUpdateCheck(false);
+  void requestAllUpdateChecks(false);
 }
 
 window.addEventListener("focus", () => {
-  if (!busy && shouldCheckForUpdates(lastUpdateCheckAt, Date.now()))
+  if (busy) return;
+  const now = Date.now();
+  if (shouldCheckForUpdates(lastUpdateCheckAt, now))
     void requestUpdateCheck(false);
+  if (shouldCheckForContentUpdates(lastContentCheckAt, now))
+    void requestContentCheck(false);
 });
 
 window.setInterval(() => {
   if (!busy && document.visibilityState === "visible")
-    void requestUpdateCheck(false);
+    void requestAllUpdateChecks(false);
 }, UPDATE_RECHECK_INTERVAL_MS);
 
 void initialize();

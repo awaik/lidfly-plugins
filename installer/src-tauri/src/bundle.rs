@@ -11,18 +11,22 @@ use crate::models::ClientError;
 
 pub const GENERATED_SKILLS_MANIFEST_PATH: &str =
     "plugins/lidfly/skills/.lidfly-generated-skills.json";
-pub const BUNDLE_BASE_PATHS: [&str; 7] = [
+pub const SKILLS_SOURCE_LOCK_PATH: &str = "plugins/lidfly/skills-source.lock.json";
+pub const BUNDLE_BASE_PATHS: [&str; 8] = [
     ".agents/plugins/marketplace.json",
     "plugins/lidfly/.codex-plugin/plugin.json",
     "plugins/lidfly/.mcp.json",
     "plugins/lidfly/assets/icon.svg",
     "plugins/lidfly/assets/logo-dark.svg",
     "plugins/lidfly/assets/logo.svg",
+    SKILLS_SOURCE_LOCK_PATH,
     GENERATED_SKILLS_MANIFEST_PATH,
 ];
 const SKILLS_PATH_PREFIX: &str = "plugins/lidfly/skills/";
+type GeneratedBundleContract = (Vec<String>, BTreeMap<String, String>, SourceProvenance);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct BundleFile {
     pub path: String,
     pub size: u64,
@@ -30,17 +34,38 @@ pub struct BundleFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BundleMetadata {
     pub schema_version: u32,
     pub plugin_version: String,
     pub plugin_bundle_sha256: String,
+    pub source: SourceProvenance,
     pub files: Vec<BundleFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SourceProvenance {
+    pub repository: String,
+    pub commit: String,
+    pub skills_tree_sha256: String,
+    pub skill_count: u32,
+    pub file_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BundleOrigin {
+    Embedded,
+    Remote,
 }
 
 #[derive(Debug, Clone)]
 pub struct VerifiedBundle {
     pub root: PathBuf,
     pub metadata: BundleMetadata,
+    pub origin: BundleOrigin,
+    pub content_key_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,8 +75,32 @@ struct GeneratedSkillsManifest {
     skills: BTreeMap<String, BTreeMap<String, String>>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SkillsSourceLock {
+    schema_version: u32,
+    source: SkillsSource,
+    skills_tree_sha256: String,
+    skill_count: u32,
+    file_count: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SkillsSource {
+    repository: String,
+    commit: String,
+}
+
 fn is_sha256(value: &str) -> bool {
     value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn is_commit(value: &str) -> bool {
+    value.len() == 40
         && value
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
@@ -93,9 +142,7 @@ pub fn is_allowed_bundle_path(value: &str) -> bool {
     is_skill_name(skill_name) && is_skill_relative_path(relative_path)
 }
 
-fn generated_bundle_contract(
-    root: &Path,
-) -> Result<(Vec<String>, BTreeMap<String, String>), ClientError> {
+fn generated_bundle_contract(root: &Path) -> Result<GeneratedBundleContract, ClientError> {
     let manifest_path = safe_join(root, GENERATED_SKILLS_MANIFEST_PATH)?;
     let manifest_metadata = fs::symlink_metadata(&manifest_path)?;
     if !manifest_metadata.is_file()
@@ -120,6 +167,9 @@ fn generated_bundle_contract(
         .map(|value| (*value).to_owned())
         .collect::<Vec<_>>();
     let mut hashes = BTreeMap::new();
+    let mut tree_digest = Sha256::new();
+    let skill_count = manifest.skills.len() as u32;
+    let mut file_count = 0_u32;
     for (skill_name, files) in manifest.skills {
         if !is_skill_name(&skill_name)
             || !files.contains_key("SKILL.md")
@@ -138,11 +188,44 @@ fn generated_bundle_contract(
                 ));
             }
             let bundle_path = format!("{SKILLS_PATH_PREFIX}{skill_name}/{relative_path}");
+            let size = fs::symlink_metadata(safe_join(root, &bundle_path)?)?.len();
+            tree_digest.update(format!("{skill_name}/{relative_path}").as_bytes());
+            tree_digest.update([0]);
+            tree_digest.update(size.to_string().as_bytes());
+            tree_digest.update([0]);
+            tree_digest.update(sha256.as_bytes());
+            tree_digest.update([0]);
+            file_count += 1;
             paths.push(bundle_path.clone());
             hashes.insert(bundle_path, sha256);
         }
     }
-    Ok((paths, hashes))
+    let source_lock: SkillsSourceLock =
+        serde_json::from_slice(&fs::read(safe_join(root, SKILLS_SOURCE_LOCK_PATH)?)?)?;
+    let actual_tree_sha256 = format!("{:x}", tree_digest.finalize());
+    if source_lock.schema_version != 1
+        || source_lock.source.repository != "https://github.com/awaik/direct-mcp-ai-project"
+        || !is_commit(&source_lock.source.commit)
+        || source_lock.skills_tree_sha256 != actual_tree_sha256
+        || source_lock.skill_count != skill_count
+        || source_lock.file_count != file_count
+    {
+        return Err(ClientError::new(
+            "invalid_source_provenance",
+            "Source provenance не совпадает с экспортированными skills.",
+        ));
+    }
+    Ok((
+        paths,
+        hashes,
+        SourceProvenance {
+            repository: source_lock.source.repository,
+            commit: source_lock.source.commit,
+            skills_tree_sha256: source_lock.skills_tree_sha256,
+            skill_count,
+            file_count,
+        },
+    ))
 }
 
 pub fn safe_join(root: &Path, relative: &str) -> Result<PathBuf, ClientError> {
@@ -223,7 +306,7 @@ pub fn verify_bundle(root: PathBuf, metadata_path: &Path) -> Result<VerifiedBund
         ));
     }
     let metadata: BundleMetadata = serde_json::from_slice(&fs::read(metadata_path)?)?;
-    if metadata.schema_version != 1 {
+    if metadata.schema_version != 2 {
         return Err(ClientError::new(
             "unsupported_bundle_schema",
             format!(
@@ -240,7 +323,13 @@ pub fn verify_bundle(root: PathBuf, metadata_path: &Path) -> Result<VerifiedBund
         ));
     }
     let canonical_root = fs::canonicalize(&root)?;
-    let (expected_paths, generated_hashes) = generated_bundle_contract(&root)?;
+    let (expected_paths, generated_hashes, source) = generated_bundle_contract(&root)?;
+    if metadata.source != source {
+        return Err(ClientError::new(
+            "source_provenance_mismatch",
+            "Source provenance в bundle metadata не совпадает с skills.",
+        ));
+    }
     let actual_paths: Vec<String> = metadata
         .files
         .iter()
@@ -316,10 +405,21 @@ pub fn verify_bundle(root: PathBuf, metadata_path: &Path) -> Result<VerifiedBund
         ));
     }
     verify_json_contract(&root)?;
-    Ok(VerifiedBundle { root, metadata })
+    Ok(VerifiedBundle {
+        root,
+        metadata,
+        origin: BundleOrigin::Embedded,
+        content_key_id: None,
+    })
 }
 
 impl VerifiedBundle {
+    pub fn as_remote(mut self, content_key_id: String) -> Self {
+        self.origin = BundleOrigin::Remote;
+        self.content_key_id = Some(content_key_id);
+        self
+    }
+
     pub fn files_by_path(&self) -> BTreeMap<&str, &BundleFile> {
         self.metadata
             .files

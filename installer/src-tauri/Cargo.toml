@@ -1,6 +1,6 @@
 [package]
 name = "lidfly-codex-plugin-installer"
-version = "1.1.0"
+version = "1.2.0"
 description = "LidFly marketplace installer for Codex"
 authors = ["LidFly"]
 license = "MIT"
@@ -21,9 +21,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+ed25519-dalek = "2.1"
+flate2 = "1"
 fs2 = "0.4"
+futures-util = "0.3"
 minisign-verify = "0.2"
 percent-encoding = "2.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 semver = "1.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -31,6 +35,7 @@ sha2 = "0.10"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
+tar = "0.4"
 thiserror = "2"
 url = "2"
 uuid = { version = "1", features = ["v4"] }

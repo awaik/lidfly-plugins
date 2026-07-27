@@ -149,6 +149,7 @@ function runSignatureVerifier(repositoryRoot, artifact, signature, publicKey) {
 
 export async function verifyReleaseArtifacts({
   version,
+  embeddedPluginVersion,
   artifactsDir,
   pluginMetadataPath,
   repositoryRoot,
@@ -176,9 +177,12 @@ export async function verifyReleaseArtifacts({
 
   const pluginMetadata = JSON.parse(await readFile(pluginMetadataPath, "utf8"));
   validateBundleMetadata(pluginMetadata);
-  if (pluginMetadata.plugin_version !== version) {
+  if (
+    embeddedPluginVersion &&
+    pluginMetadata.plugin_version !== embeddedPluginVersion
+  ) {
     throw new Error(
-      `Plugin bundle version ${pluginMetadata.plugin_version} does not match release ${version}`,
+      `Plugin bundle version ${pluginMetadata.plugin_version} does not match embedded plugin ${embeddedPluginVersion}`,
     );
   }
   const bundleRoot = path.join(
@@ -220,6 +224,7 @@ export async function verifyReleaseArtifacts({
   }
   return {
     version,
+    embeddedPluginVersion: pluginMetadata.plugin_version,
     artifacts: artifacts.map(({ path: _path, ...artifact }) => artifact),
     pluginMetadata,
     signing,

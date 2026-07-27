@@ -24,10 +24,21 @@ if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PATH)) {
 if ([string]::IsNullOrWhiteSpace($env:TAURI_UPDATER_PUBLIC_KEY_PATH)) {
   $env:TAURI_UPDATER_PUBLIC_KEY_PATH = "$($env:TAURI_SIGNING_PRIVATE_KEY_PATH).pub"
 }
-foreach ($name in @('TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'TAURI_SIGNING_PRIVATE_KEY_PATH', 'TAURI_UPDATER_PUBLIC_KEY_PATH')) {
+$requiredReleaseSettings = @(
+  'TAURI_SIGNING_PRIVATE_KEY_PASSWORD'
+  'TAURI_SIGNING_PRIVATE_KEY_PATH'
+  'TAURI_UPDATER_PUBLIC_KEY_PATH'
+  'LIDFLY_PLUGIN_CONTENT_PUBLIC_KEY_BASE64'
+)
+foreach ($name in $requiredReleaseSettings) {
   if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
     throw "Missing local release setting: $name"
   }
+}
+$contentKeyValidator = Join-Path $repositoryRoot 'scripts\validate-plugin-content-public-key.mjs'
+node $contentKeyValidator
+if ($LASTEXITCODE -ne 0) {
+  throw 'Plugin content public key validation failed'
 }
 
 $env:TAURI_UPDATER_PUBLIC_KEY = (Get-Content -Raw $env:TAURI_UPDATER_PUBLIC_KEY_PATH).Trim()
@@ -50,7 +61,7 @@ try {
   npm ci
   npm run bundle:plugin
   npm run bundle:plugin:verify
-  npm run version:check
+  npm run version:check -- --installer-build
   if ((node -p "require('./package.json').version") -ne $Version) {
     throw 'package.json version does not match the requested release'
   }

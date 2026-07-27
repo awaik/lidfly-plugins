@@ -26,7 +26,7 @@ LidFly подключает Codex к рекламе, аналитике, сай�
 
 ## Встроенные скиллы
 
-Плагин включает 20 скиллов с готовыми рабочими сценариями. Codex выбирает их по задаче, поэтому отдельно настраивать или копировать инструкции не нужно.
+Плагин включает 21 скилл с готовыми рабочими сценариями, включая диагностику подключения LidFly. Codex выбирает их по задаче, поэтому отдельно настраивать или копировать инструкции не нужно.
 
 Скиллы помогают:
 
@@ -170,8 +170,10 @@ codex plugin marketplace remove lidfly
 │   ├── .codex-plugin/plugin.json             описание плагина
 │   ├── .mcp.json                             подключение к LidFly MCP
 │   ├── assets/                               иконки и логотипы
+│   ├── skills-source.lock.json               commit и digest канонического source
 │   └── skills/                               встроенные скиллы и их ресурсы
-├── releases/<version>.json                   metadata опубликованных релизов
+├── releases/<version>.json                   metadata релизов установщика
+├── plugin-releases/<version>.json            metadata content-релизов плагина
 ├── scripts/build-plugin-bundle.mjs           воспроизводимый embedded bundle
 ├── scripts/verify-release-artifacts.mjs      fail-closed проверка релизных файлов
 ├── scripts/manage-release-metadata.mjs       проверка и promotion metadata

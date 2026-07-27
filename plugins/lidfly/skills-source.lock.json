@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "https://github.com/awaik/direct-mcp-ai-project",
+    "commit": "66de9c5608aaafb1ec617f48e77082af1a8e40ba"
+  },
+  "skills_tree_sha256": "2beece48825516c0fa01ee230183695c986d1d21080326ed38690f402cbc7224",
+  "skill_count": 21,
+  "file_count": 49
+}
