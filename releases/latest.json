@@ -1,8 +1,12 @@
 {
-  "schemaVersion": 1,
-  "plugin": {
+  "schemaVersion": 2,
+  "installer": {
+    "name": "LidFly Codex Plugin Installer",
+    "version": "1.2.0"
+  },
+  "embeddedPlugin": {
     "name": "lidfly",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "manifestPath": "./plugins/lidfly/.codex-plugin/plugin.json",
     "mcpUrl": "https://lidfly.ru/mcp/v3"
   },
@@ -14,26 +18,26 @@
   },
   "publication": {
     "status": "published",
-    "tag": "v1.1.0",
-    "commit": "29b8ab92ea4cd8d9c18d69efb214e39b9342aaf2",
-    "publishedAt": "2026-07-24T11:08:17Z"
+    "tag": "installer-v1.2.0",
+    "commit": "18fb4119a0c7c89bc0a7911e6721a49cbb34c1e7",
+    "publishedAt": "2026-07-27T12:34:47Z"
   },
   "installers": {
     "status": "published",
     "artifacts": [
       {
         "platform": "macos-universal",
-        "filename": "LidFly.Codex.Plugin.Installer_1.1.0_universal.dmg",
-        "url": "https://github.com/awaik/lidfly-plugins/releases/download/v1.1.0/LidFly.Codex.Plugin.Installer_1.1.0_universal.dmg",
-        "size": 6838978,
-        "sha256": "c6f0596d587cac7b505c1f973fe8cff4529cad8adb8bc3f3e32f89d41c6446f8"
+        "filename": "LidFly.Codex.Plugin.Installer_1.2.0_universal.dmg",
+        "url": "https://github.com/awaik/lidfly-plugins/releases/download/installer-v1.2.0/LidFly.Codex.Plugin.Installer_1.2.0_universal.dmg",
+        "size": 7544702,
+        "sha256": "89511c00ba7b90c2060f01d6aea2f1156281299bd70a90aac28770eeffc42efe"
       },
       {
         "platform": "windows-x86_64",
-        "filename": "LidFly.Codex.Plugin.Installer_1.1.0_x64-setup.exe",
-        "url": "https://github.com/awaik/lidfly-plugins/releases/download/v1.1.0/LidFly.Codex.Plugin.Installer_1.1.0_x64-setup.exe",
-        "size": 2434771,
-        "sha256": "eae05c18c2c20f6e72f9f0b4632ef019468392303a2cb856f9ac6c04e6b06171"
+        "filename": "LidFly.Codex.Plugin.Installer_1.2.0_x64-setup.exe",
+        "url": "https://github.com/awaik/lidfly-plugins/releases/download/installer-v1.2.0/LidFly.Codex.Plugin.Installer_1.2.0_x64-setup.exe",
+        "size": 2645329,
+        "sha256": "261b1249f5dcf49d369244897fbb058f17acbfc6188627149d47f7623bdd8624"
       }
     ]
   }
