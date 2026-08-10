@@ -6,7 +6,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::bundle::{is_allowed_bundle_path, safe_join, BundleFile, BundleOrigin};
+use crate::bundle::{safe_join, BundleFile, BundleOrigin};
 use crate::models::ClientError;
 
 pub const STATE_SCHEMA_VERSION: u32 = 2;
@@ -86,7 +86,10 @@ fn is_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-fn validate_state(state: &InstalledState) -> Result<(), ClientError> {
+fn validate_state(
+    state: &InstalledState,
+    is_allowed_path: fn(&str) -> bool,
+) -> Result<(), ClientError> {
     if state.schema_version != STATE_SCHEMA_VERSION
         || Version::parse(&state.installer_version).is_err()
         || Version::parse(&state.plugin_version).is_err()
@@ -126,7 +129,7 @@ fn validate_state(state: &InstalledState) -> Result<(), ClientError> {
     let mut seen = BTreeSet::new();
     for file in &state.managed_files {
         safe_join(Path::new("."), &file.path)?;
-        if !is_allowed_bundle_path(&file.path)
+        if !is_allowed_path(&file.path)
             || !seen.insert(file.path.as_str())
             || file.size == 0
             || !is_sha256(&file.sha256)
@@ -140,13 +143,16 @@ fn validate_state(state: &InstalledState) -> Result<(), ClientError> {
     Ok(())
 }
 
-pub fn read_state(path: &Path) -> Result<Option<InstalledState>, ClientError> {
+pub fn read_state(
+    path: &Path,
+    is_allowed_path: fn(&str) -> bool,
+) -> Result<Option<InstalledState>, ClientError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
             let bytes = fs::read(path)?;
             let value: Value = serde_json::from_slice(&bytes)?;
             let state = migrate_state(value)?;
-            validate_state(&state)?;
+            validate_state(&state, is_allowed_path)?;
             Ok(Some(state))
         }
         Ok(_) => Err(ClientError::new(
@@ -194,6 +200,7 @@ mod tests {
     use std::fs;
 
     use super::{migrate_state, read_state, STATE_SCHEMA_VERSION};
+    use crate::bundle::{is_allowed_bundle_path, is_safe_claude_project_source_path};
     use serde_json::json;
     use tempfile::tempdir;
 
@@ -213,6 +220,41 @@ mod tests {
     #[test]
     fn rejects_future_schema() {
         assert!(migrate_state(json!({"schema_version": 99})).is_err());
+    }
+
+    #[test]
+    fn claude_project_paths_are_valid_only_under_the_claude_policy() {
+        let directory = tempdir().expect("temporary directory");
+        let state_path = directory.path().join("installed-state.json");
+        fs::write(
+            &state_path,
+            serde_json::to_vec(&json!({
+                "schema_version": 2,
+                "installer_version": "1.2.0",
+                "plugin_version": "1.1.1",
+                "plugin_bundle_sha256": "a".repeat(64),
+                "installed_at": "2026-08-06T00:00:00Z",
+                "bundle_origin": "embedded",
+                "source_repository": null,
+                "source_commit": null,
+                "content_key_id": null,
+                "managed_files": [{
+                    "path": "CLAUDE.md",
+                    "size": 1,
+                    "sha256": "b".repeat(64)
+                }]
+            }))
+            .expect("serialize state"),
+        )
+        .expect("write state");
+
+        let error = read_state(&state_path, is_allowed_bundle_path)
+            .expect_err("marketplace policy must reject claude-project paths");
+        assert_eq!(error.code, "invalid_state");
+        let state = read_state(&state_path, is_safe_claude_project_source_path)
+            .expect("claude policy accepts project paths")
+            .expect("state present");
+        assert_eq!(state.managed_files[0].path, "CLAUDE.md");
     }
 
     #[test]
@@ -237,7 +279,8 @@ mod tests {
         )
         .expect("write state");
 
-        let error = read_state(&state_path).expect_err("unsafe path must fail closed");
+        let error = read_state(&state_path, is_allowed_bundle_path)
+            .expect_err("unsafe path must fail closed");
         assert!(matches!(
             error.code.as_str(),
             "unsafe_path" | "invalid_state"
@@ -262,7 +305,8 @@ mod tests {
         )
         .expect("write state");
 
-        let error = read_state(&state_path).expect_err("invalid hash must fail closed");
+        let error = read_state(&state_path, is_allowed_bundle_path)
+            .expect_err("invalid hash must fail closed");
         assert_eq!(error.code, "invalid_state");
     }
 
@@ -288,7 +332,8 @@ mod tests {
         )
         .expect("write state");
 
-        let state = read_state(&state_path).expect("skill path should be allowed");
+        let state =
+            read_state(&state_path, is_allowed_bundle_path).expect("skill path should be allowed");
         assert!(state.is_some());
     }
 }

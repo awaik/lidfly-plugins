@@ -270,3 +270,10 @@ embedded bundle в `direct-mcp` не копируются.
 policy, Prepare → verify → `codex://`, установка плагина, OAuth, полный restart,
 `subscription_status`, read-only MCP call, Repair/updater/Remove, сохранение
 modified/unknown files и Windows path с пробелами/non-ASCII пользователем.
+
+Для контура Claude Desktop дополнительно проверяются: создание папки LidFly,
+открытие через `claude://cowork/new` на установленном Claude Desktop,
+подключение custom connector `https://lidfly.ru/mcp/v3` с OAuth, «Use existing
+folder» в Cowork, Repair изменённого служебного файла с backup, Remove с
+сохранением пользовательских документов и поведение при отсутствующем
+Claude Desktop (понятная ошибка handler, папка не откатывается).

@@ -8,6 +8,8 @@ import {
 
 import "./styles.css";
 import type {
+  BundleSyncOutcome,
+  ClaudeProjectStatusPayload,
   ClientError,
   InstallerStatus,
   OperationOutcome,
@@ -107,6 +109,54 @@ app.innerHTML = `
       </div>
     </section>
 
+    <section class="status-card claude-card" aria-labelledby="claude-title" aria-live="polite">
+      <div class="status-topline">
+        <span id="claude-dot" class="status-dot is-loading"></span>
+        <div>
+          <div class="eyebrow">Дополнительно · Claude Desktop (Cowork)</div>
+          <h2 id="claude-title">Проверяем папку LidFly…</h2>
+        </div>
+      </div>
+      <p id="claude-message" class="status-message">
+        Установщик создаст рабочую папку с инструкциями и скиллами LidFly для Claude Cowork
+        и будет обновлять её вместе с плагином.
+      </p>
+      <div id="claude-folder" class="claude-folder" hidden>
+        <p class="claude-folder-path"><b>Папка на диске:</b> <code id="claude-folder-path"></code></p>
+        <p>
+          Папка остаётся на этом компьютере: в ней ваши рабочие материалы и служебные файлы LidFly.
+          Не удаляйте и не переносите её вручную — установщик обновляет только свои файлы,
+          ваши документы не изменяются.
+        </p>
+      </div>
+      <div class="claude-steps">
+        <div class="claude-step">
+          <div class="eyebrow">Шаг 1 · Подключите MCP</div>
+          <p>В Claude Desktop: Settings → Connectors → «Add custom connector», вставьте адрес и войдите в LidFly по email.</p>
+          <div class="mcp-row">
+            <code id="claude-mcp-url">https://lidfly.ru/mcp/v3</code>
+            <button id="copy-mcp" class="button">Скопировать</button>
+          </div>
+        </div>
+        <div class="claude-step">
+          <div class="eyebrow">Шаг 2 · Добавьте папку как проект</div>
+          <p>Создайте папку кнопкой ниже, затем в Claude Cowork: Projects → «+» → «Use existing folder» → выберите папку LidFly. Кнопка «Открыть в Claude» делает то же одним щелчком.</p>
+        </div>
+      </div>
+      <div id="claude-notice" class="notice" hidden></div>
+      <div id="claude-details" class="details" hidden></div>
+      <div class="primary-actions">
+        <button id="claude-prepare" class="button button-primary">Создать папку LidFly</button>
+        <button id="claude-open" class="button button-dark" disabled>Открыть в Claude</button>
+        <button id="claude-repair" class="button button-warning" hidden>Восстановить папку</button>
+        <button id="claude-remove" class="button button-ghost" disabled>Удалить файлы LidFly</button>
+      </div>
+      <p class="claude-fineprint">
+        Нужен план Claude Pro или выше. Cowork и коннектор подтверждаются внутри Claude —
+        установщик не меняет настройки Claude Desktop.
+      </p>
+    </section>
+
     <section class="tools" aria-label="Дополнительные действия">
       <button id="verify" class="tool-button"><span>✓</span><b>Проверить файлы</b><small>Сверить SHA-256</small></button>
       <button id="update" class="tool-button"><span>↻</span><b>Проверить обновления</b><small id="update-caption">Версия приложения</small></button>
@@ -150,9 +200,23 @@ const elements = {
   updateCaption: required("update-caption"),
   logs: requiredButton("logs"),
   remove: requiredButton("remove"),
+  claudeDot: required("claude-dot"),
+  claudeTitle: required("claude-title"),
+  claudeMessage: required("claude-message"),
+  claudeFolder: required("claude-folder"),
+  claudeFolderPath: required("claude-folder-path"),
+  claudeMcpUrl: required("claude-mcp-url"),
+  claudeNotice: required("claude-notice"),
+  claudeDetails: required("claude-details"),
+  claudePrepare: requiredButton("claude-prepare"),
+  claudeOpen: requiredButton("claude-open"),
+  claudeRepair: requiredButton("claude-repair"),
+  claudeRemove: requiredButton("claude-remove"),
+  copyMcp: requiredButton("copy-mcp"),
 };
 
 let currentStatus: InstallerStatus | null = null;
+let claudeStatus: ClaudeProjectStatusPayload | null = null;
 let availableUpdate: Update | null = null;
 let pluginContentStatus: PluginContentUpdateStatus | null = null;
 let busy = false;
@@ -217,9 +281,17 @@ function setBusy(value: boolean): void {
     elements.update,
     elements.logs,
     elements.remove,
+    elements.claudePrepare,
+    elements.claudeOpen,
+    elements.claudeRepair,
+    elements.claudeRemove,
   ]) {
     button.disabled =
-      value || (button === elements.openCodex && !currentStatus?.canOpenCodex);
+      value ||
+      (button === elements.openCodex && !currentStatus?.canOpenCodex) ||
+      (button === elements.claudeOpen && !claudeStatus?.status.canOpenCodex) ||
+      (button === elements.claudeRemove &&
+        claudeStatus?.status.phase === "not_prepared");
   }
   document.body.classList.toggle("is-busy", value);
 }
@@ -398,6 +470,117 @@ async function refreshStatus(): Promise<void> {
   renderStatus(status);
 }
 
+function showClaudeNotice(
+  message: string,
+  kind: "success" | "warning" | "error" = "success",
+): void {
+  elements.claudeNotice.hidden = false;
+  elements.claudeNotice.className = `notice notice-${kind}`;
+  elements.claudeNotice.textContent = message;
+}
+
+function clearClaudeNotice(): void {
+  elements.claudeNotice.hidden = true;
+  elements.claudeNotice.textContent = "";
+}
+
+function renderClaudeDetails(status: InstallerStatus): void {
+  const noteworthy = status.files.filter(
+    (file) => file.condition !== "unchanged",
+  );
+  const rows = noteworthy.map(
+    (file) =>
+      `<li><code>${escapeHtml(file.path)}</code> — ${conditionLabel(file.condition)}</li>`,
+  );
+  elements.claudeDetails.hidden = rows.length === 0;
+  elements.claudeDetails.innerHTML =
+    rows.length > 0
+      ? `<strong>Служебные файлы LidFly</strong><ul>${rows.join("")}</ul>`
+      : "";
+}
+
+function renderClaudeStatus(payload: ClaudeProjectStatusPayload): void {
+  claudeStatus = payload;
+  const status = payload.status;
+  elements.claudeMcpUrl.textContent = payload.mcpUrl;
+  elements.claudeFolder.hidden = false;
+  elements.claudeFolderPath.textContent = payload.folderPath;
+  elements.claudeDot.className = "status-dot";
+  const statusCopy: Record<
+    InstallerStatus["phase"],
+    readonly [string, string, string]
+  > = {
+    not_prepared: [
+      "Папка LidFly ещё не создана",
+      "Нажмите «Создать папку LidFly» — появится готовый проект для Claude Cowork со скиллами и инструкциями.",
+      "idle",
+    ],
+    ready_for_codex: [
+      "Папка LidFly готова",
+      "Откройте её в Claude или добавьте как проект Cowork через «Use existing folder».",
+      "success",
+    ],
+    installed_bundle: [
+      "Папка LidFly синхронизирована",
+      "Служебные файлы совпадают с официальной версией. Ваши документы в папке не изменяются.",
+      "success",
+    ],
+    modified_files: [
+      "Служебные файлы LidFly изменены",
+      "Установщик ничего не перезаписал. «Восстановить папку» вернёт официальные файлы, сохранив backup; ваши документы не пострадают.",
+      "warning",
+    ],
+    incomplete_state: [
+      "Папка подготовлена не полностью",
+      "Запустите восстановление — установщик безопасно допишет недостающие служебные файлы.",
+      "warning",
+    ],
+  };
+  const copy = statusCopy[status.phase];
+  elements.claudeTitle.textContent = copy[0];
+  elements.claudeMessage.textContent = copy[1];
+  elements.claudeDot.classList.add(`is-${copy[2]}`);
+  elements.claudeOpen.disabled = busy || !status.canOpenCodex;
+  elements.claudePrepare.hidden = status.canOpenCodex && !status.updateRequired;
+  elements.claudePrepare.textContent = status.updateRequired
+    ? "Обновить папку LidFly"
+    : "Создать папку LidFly";
+  elements.claudeRepair.hidden = !status.needsRepair;
+  elements.claudeRemove.disabled = busy || status.phase === "not_prepared";
+  renderClaudeDetails(status);
+}
+
+async function refreshClaudeStatus(): Promise<void> {
+  const payload = await invoke<ClaudeProjectStatusPayload>("get_claude_status");
+  renderClaudeStatus(payload);
+}
+
+async function runClaudeOperation(
+  operation: () => Promise<OperationOutcome>,
+  successMessage: string,
+): Promise<void> {
+  if (busy) return;
+  clearClaudeNotice();
+  setBusy(true);
+  try {
+    const outcome = await operation();
+    await refreshClaudeStatus();
+    const backup = outcome.backupDirectory
+      ? ` Резервная копия: ${outcome.backupDirectory}.`
+      : "";
+    showClaudeNotice(`${successMessage}${backup}`);
+  } catch (error) {
+    const clientError = asClientError(error);
+    showClaudeNotice(
+      `${clientError.message}${clientError.details.length > 0 ? ` ${clientError.details.join(", ")}` : ""}`,
+      "error",
+    );
+    await refreshClaudeStatus().catch(() => undefined);
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function runOperation(
   operation: () => Promise<OperationOutcome>,
 ): Promise<void> {
@@ -495,6 +678,91 @@ elements.logs.addEventListener("click", () => {
   void invoke("open_logs").catch((error: unknown) =>
     showNotice(asClientError(error).message, "error"),
   );
+});
+
+elements.claudePrepare.addEventListener("click", () => {
+  const isUpdate = claudeStatus?.status.updateRequired ?? false;
+  void runClaudeOperation(
+    async () => {
+      let allowDowngrade = false;
+      if (claudeStatus?.status.downgradeDetected) {
+        allowDowngrade = window.confirm(
+          "В папке подготовлена более новая версия файлов LidFly. Установить более раннюю и сохранить backup?",
+        );
+        if (!allowDowngrade) throw new Error("Понижение версии отменено.");
+      }
+      return invoke<OperationOutcome>("prepare_claude_folder", {
+        allowModified: false,
+        allowDowngrade,
+      });
+    },
+    isUpdate
+      ? "Папка LidFly обновлена до официальной версии. Ваши документы не изменялись."
+      : "Папка LidFly создана. Подключите MCP-коннектор (шаг 1) и добавьте папку как проект Cowork (шаг 2).",
+  );
+});
+
+elements.claudeRepair.addEventListener("click", () => {
+  if (
+    !window.confirm(
+      "Изменённые служебные файлы LidFly будут сохранены в backup и заменены официальными. Ваши собственные документы в папке не изменятся. Продолжить?",
+    )
+  )
+    return;
+  void runClaudeOperation(
+    () =>
+      invoke<OperationOutcome>("prepare_claude_folder", {
+        allowModified: true,
+        allowDowngrade: false,
+      }),
+    "Папка LidFly восстановлена: служебные файлы заменены официальными.",
+  );
+});
+
+elements.claudeOpen.addEventListener("click", () => {
+  if (busy) return;
+  clearClaudeNotice();
+  setBusy(true);
+  void invoke<string>("open_in_claude")
+    .then(() =>
+      showClaudeNotice(
+        "Claude открыт на папке LidFly. Подтвердите промпт в Cowork; чтобы папка осталась в списке, добавьте её как проект через «Use existing folder».",
+      ),
+    )
+    .catch((error: unknown) =>
+      showClaudeNotice(asClientError(error).message, "error"),
+    )
+    .finally(() => setBusy(false));
+});
+
+elements.claudeRemove.addEventListener("click", () => {
+  if (
+    !window.confirm(
+      "Удалить из папки LidFly только неизменённые служебные файлы установщика? Ваши собственные документы и сама папка останутся на месте.",
+    )
+  )
+    return;
+  void runClaudeOperation(
+    () => invoke<OperationOutcome>("remove_claude_folder"),
+    "Служебные файлы LidFly удалены. Ваши документы и сама папка сохранены.",
+  );
+});
+
+elements.copyMcp.addEventListener("click", () => {
+  const url = claudeStatus?.mcpUrl ?? elements.claudeMcpUrl.textContent ?? "";
+  void navigator.clipboard
+    .writeText(url)
+    .then(() =>
+      showClaudeNotice(
+        "Адрес MCP скопирован. Вставьте его в Claude: Settings → Connectors → «Add custom connector».",
+      ),
+    )
+    .catch(() =>
+      showClaudeNotice(
+        `Не удалось скопировать автоматически. Выделите адрес ${url} и скопируйте вручную.`,
+        "warning",
+      ),
+    );
 });
 
 elements.update.addEventListener("click", () => {
@@ -684,6 +952,17 @@ async function installPluginContentUpdate(): Promise<void> {
     };
     elements.pluginUpdatePanel.hidden = true;
     showCodexUpdateReady(outcome.release.pluginVersion, outcome.codexOpened);
+    await refreshClaudeStatus().catch(() => undefined);
+    if (outcome.claudeOperation) {
+      showClaudeNotice(
+        "Папка LidFly обновлена вместе с плагином. Ваши документы не изменялись.",
+      );
+    } else if (outcome.claudeSyncError) {
+      showClaudeNotice(
+        `Папка LidFly не обновлена автоматически: ${outcome.claudeSyncError.message} Нажмите «Восстановить папку», чтобы обновить её с сохранением backup.`,
+        "warning",
+      );
+    }
     const backup = outcome.operation.backupDirectory
       ? ` Backup: ${outcome.operation.backupDirectory}.`
       : "";
@@ -754,12 +1033,15 @@ async function installAvailableUpdate(update: Update): Promise<void> {
 
 async function initialize(): Promise<void> {
   setBusy(true);
-  let synced: OperationOutcome | null = null;
+  let synced: BundleSyncOutcome | null = null;
   try {
-    synced = await invoke<OperationOutcome | null>("sync_bundle_after_update");
+    synced = await invoke<BundleSyncOutcome>("sync_bundle_after_update");
     await refreshStatus();
-    if (synced) {
-      showCodexUpdateReady(synced.status.embeddedPluginVersion, false);
+    if (synced.marketplace) {
+      showCodexUpdateReady(
+        synced.marketplace.status.embeddedPluginVersion,
+        false,
+      );
       showNotice(
         "Установщик и пакет плагина обновлены. Открываем Codex для штатного подтверждения.",
       );
@@ -774,7 +1056,24 @@ async function initialize(): Promise<void> {
   } finally {
     setBusy(false);
   }
-  if (synced) await openCodex(true);
+  try {
+    await refreshClaudeStatus();
+    if (synced?.claude) {
+      showClaudeNotice(
+        "Папка LidFly обновлена вместе с плагином. Ваши документы не изменялись.",
+      );
+    } else if (synced?.claudeSyncError) {
+      showClaudeNotice(
+        `Папка LidFly не обновлена автоматически: ${synced.claudeSyncError.message}`,
+        "warning",
+      );
+    }
+  } catch (error) {
+    elements.claudeTitle.textContent = "Не удалось проверить папку LidFly";
+    elements.claudeMessage.textContent = asClientError(error).message;
+    elements.claudeDot.className = "status-dot is-error";
+  }
+  if (synced?.marketplace) await openCodex(true);
   void requestAllUpdateChecks(false);
 }
 

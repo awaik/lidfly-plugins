@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "lidfly": {
+      "type": "http",
+      "url": "https://lidfly.ru/mcp/v3"
+    }
+  },
+  "skills": {
+    "directory": ".openclaw/skills"
+  }
+}

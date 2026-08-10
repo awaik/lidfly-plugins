@@ -91,9 +91,30 @@ pub struct PluginContentInstallOutcome {
     pub release: PluginContentReleaseSummary,
     pub operation: OperationOutcome,
     pub codex_opened: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_operation: Option<OperationOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_sync_error: Option<ClientError>,
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeProjectStatusPayload {
+    pub status: InstallerStatus,
+    pub folder_path: String,
+    pub project_commit: String,
+    pub mcp_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleSyncOutcome {
+    pub marketplace: Option<OperationOutcome>,
+    pub claude: Option<OperationOutcome>,
+    pub claude_sync_error: Option<ClientError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientError {
     pub code: String,

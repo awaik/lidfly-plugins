@@ -8,7 +8,8 @@
 - Plugin content: версия manifest/skills, tag `plugin-vX.Y.Z`, metadata `plugin-releases/X.Y.Z.json`, guarded `plugin-releases/latest.json`.
 - Legacy tags `v1.0.x` и `v1.1.0` остаются без изменений.
 - Первый installer с content updater — `1.2.0`.
-- Plugin content требует `min_installer_version >= 1.2.0`.
+- Старые content bundle schema 2 требуют `min_installer_version >= 1.2.0`.
+- Content bundle schema 3 со снапшотом `claude-project` требует `min_installer_version >= 1.3.0`.
 - Стабильные идентификаторы `lidfly`, `./plugins/lidfly` и `https://lidfly.ru/mcp/v3` не меняются.
 
 `node scripts/check-versions.mjs` проверяет installer и plugin как две отдельные SemVer-линии. Installer metadata schema 2 хранит `installer.version` и `embeddedPlugin.version`; их равенство не требуется. Только реальная сборка installer вызывает `npm run version:check -- --installer-build` и требует, чтобы текущий bundle точно совпадал с зафиксированной embedded version.
@@ -25,6 +26,16 @@ Automation может менять только:
 - один draft `plugin-releases/<next-patch>.json`.
 
 Неизменившийся tree digest не создаёт diff и не повышает версию. Изменённая вручную generated copy останавливает sync. После merge PR content release остаётся ручной подписанной операцией.
+
+## Синхронизация claude-project снапшота
+
+Снапшот `claude-project/**` для Claude Desktop (Cowork) обновляется вручную из локального клона `awaik/direct-mcp-ai-project`:
+
+```sh
+node scripts/sync-claude-project.mjs
+```
+
+Скрипт берёт строго закоммиченный `HEAD` (`git archive`), предупреждает о незакоммиченных изменениях и незапушенном коммите, исключает Claude settings с автоматическими hooks/project MCP, их аудиофайлы и repository-only workflows, затем обновляет `claude-project/**`, `claude-project/.lidfly-claude-project.json` и `claude-project-source.lock.json`. Bundle использует schema 3, поэтому content-релизы с claude-project требуют `min_installer_version >= 1.3.0`.
 
 ## Локальная проверка
 
@@ -94,7 +105,7 @@ npm run release:content:build -- \
   --private-key /protected/lidfly-plugin-content-ed25519.pem \
   --output /absolute/output/plugin-X.Y.Z \
   --published-at 2026-07-27T00:00:00Z \
-  --min-installer-version 1.2.0
+  --min-installer-version 1.3.0
 ```
 
 Скрипт создаёт:
@@ -151,9 +162,10 @@ Production route и atomic publication находятся в `direct-mcp`. Об�
 
 1. развернуть route `/codex-plugin-content` без feed;
 2. выпустить installer 1.2.0 с public key;
-3. передать четыре immutable/signed файла и handoff в `direct-mcp`;
-4. verifier копирует immutable artifacts и signed release metadata первыми, затем одним atomic rename переключает внутренний active pointer; публичные `latest.json`/`.sig` читаются через него;
-5. выполнить GET/HEAD smoke.
+3. до первого content bundle schema 3 выпустить installer 1.3.0;
+4. передать четыре immutable/signed файла и handoff в `direct-mcp`;
+5. verifier копирует immutable artifacts и signed release metadata первыми, затем одним atomic rename переключает внутренний active pointer; публичные `latest.json`/`.sig` читаются через него;
+6. выполнить GET/HEAD smoke.
 
 Не публиковать feed, пока installer и production verifier не содержат один и тот же public key.
 Пользовательский раздел README про независимый content-канал обновляется только после promotion installer 1.2.0 и успешного smoke публичного feed. Draft metadata или готовый, но ещё не опубликованный код не считаются доступной пользователю функцией.

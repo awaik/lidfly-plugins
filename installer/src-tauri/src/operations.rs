@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use crate::bundle::{safe_join, sha256_file, BundleFile, VerifiedBundle};
+use crate::bundle::{
+    is_allowed_bundle_path, is_safe_claude_project_source_path, safe_join, sha256_file, BundleFile,
+    VerifiedBundle,
+};
 use crate::models::{
     ClientError, FileCondition, FileStatus, InstallerPhase, InstallerStatus, OperationOutcome,
 };
@@ -30,6 +33,7 @@ pub struct InstallLayout {
     control_root: PathBuf,
     installed_state: PathBuf,
     managed_state: PathBuf,
+    allowed_path: fn(&str) -> bool,
 }
 
 impl InstallLayout {
@@ -42,6 +46,23 @@ impl InstallLayout {
             managed_state: control_root.join("managed-files.json"),
             marketplace_root,
             control_root,
+            allowed_path: is_allowed_bundle_path,
+        }
+    }
+
+    /// Layout для пользовательской папки LidFly (Claude Desktop / Cowork):
+    /// корнем служит сама папка, якорный файл — CLAUDE.md, а managed-пути
+    /// проверяются политикой снапшота проекта, не marketplace.
+    pub fn claude_project(claude_root: &Path) -> Self {
+        let marketplace_root = claude_root.to_path_buf();
+        let control_root = marketplace_root.join(CONTROL_DIRECTORY);
+        Self {
+            marketplace_manifest: marketplace_root.join("CLAUDE.md"),
+            installed_state: control_root.join("installed-state.json"),
+            managed_state: control_root.join("managed-files.json"),
+            marketplace_root,
+            control_root,
+            allowed_path: is_safe_claude_project_source_path,
         }
     }
 }
@@ -264,9 +285,65 @@ impl InstallerCore {
         Ok(self.classify()?.status)
     }
 
+    /// Возвращает read-only состояние для ещё не созданного root. Это нужно
+    /// экрану Claude: простой запуск установщика не должен создавать `~/LidFly`.
+    pub fn status_without_creating_root(&self) -> Result<InstallerStatus, ClientError> {
+        match fs::symlink_metadata(&self.layout.marketplace_root) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Ok(self.not_prepared_status())
+            }
+            _ => self.status(),
+        }
+    }
+
+    /// Папка считается инициализированной, если установщик уже записал в ней
+    /// authoritative state. До этого автоматическая синхронизация её не трогает.
+    pub fn state_initialized(&self) -> bool {
+        fs::symlink_metadata(&self.layout.installed_state)
+            .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
+    }
+
+    pub fn root_path(&self) -> &Path {
+        &self.layout.marketplace_root
+    }
+
+    fn not_prepared_status(&self) -> InstallerStatus {
+        InstallerStatus {
+            app_version: self.app_version.clone(),
+            embedded_plugin_version: self.bundle.metadata.plugin_version.clone(),
+            installed_plugin_version: None,
+            bundle_origin: self.bundle.origin.clone(),
+            source_commit: self.bundle.metadata.source.commit.clone(),
+            plugin_bundle_sha256: self.bundle.metadata.plugin_bundle_sha256.clone(),
+            marketplace_path: self
+                .layout
+                .marketplace_manifest
+                .to_string_lossy()
+                .into_owned(),
+            phase: InstallerPhase::NotPrepared,
+            files: self
+                .bundle
+                .metadata
+                .files
+                .iter()
+                .map(|expected| FileStatus {
+                    path: expected.path.clone(),
+                    condition: FileCondition::Missing,
+                    expected_sha256: expected.sha256.clone(),
+                    actual_sha256: None,
+                })
+                .collect(),
+            unknown_files: Vec::new(),
+            can_open_codex: false,
+            needs_repair: false,
+            update_required: false,
+            downgrade_detected: false,
+        }
+    }
+
     fn classify(&self) -> Result<Classification, ClientError> {
         ensure_root_safe(&self.layout.marketplace_root)?;
-        let state = read_state(&self.layout.installed_state)?;
+        let state = read_state(&self.layout.installed_state, self.layout.allowed_path)?;
         let state_consistent = state.as_ref().is_some_and(|installed| {
             validate_managed_mirror(&self.layout.managed_state, installed).is_ok()
         });
@@ -917,8 +994,10 @@ impl InstallerCore {
             }
             let journal: TransactionJournal = serde_json::from_slice(&fs::read(&journal_path)?)?;
             self.validate_transaction_journal(&journal)?;
-            let committed_state = read_state(&self.layout.installed_state)?
-                .is_some_and(|state| state.plugin_bundle_sha256 == journal.target_bundle_sha256);
+            let committed_state =
+                read_state(&self.layout.installed_state, self.layout.allowed_path)?.is_some_and(
+                    |state| state.plugin_bundle_sha256 == journal.target_bundle_sha256,
+                );
             let mut committed = committed_state;
             if committed {
                 for journal_entry in &journal.entries {

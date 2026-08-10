@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
 use lidfly_codex_plugin_installer_lib::bundle::{
-    verify_bundle, BundleFile, BundleMetadata, SourceProvenance, BUNDLE_BASE_PATHS,
+    verify_bundle, BundleFile, BundleMetadata, ClaudeProjectProvenance, SourceProvenance,
+    BUNDLE_BASE_PATHS,
 };
 use lidfly_codex_plugin_installer_lib::models::{FileCondition, InstallerPhase};
 use lidfly_codex_plugin_installer_lib::operations::{FailPoint, InstallLayout, InstallerCore};
@@ -21,11 +22,19 @@ const TEST_SKILL_PATHS: [&str; 2] = [
     "plugins/lidfly/skills/test-skill/agents/openai.yaml",
 ];
 
+const TEST_PROJECT_PATHS: [&str; 2] = [
+    "claude-project/.claude/skills/test-skill/SKILL.md",
+    "claude-project/CLAUDE.md",
+];
+
 fn fixture_bundle_paths() -> Vec<&'static str> {
-    BUNDLE_BASE_PATHS
+    let mut paths: Vec<&'static str> = BUNDLE_BASE_PATHS
         .into_iter()
         .chain(TEST_SKILL_PATHS)
-        .collect()
+        .chain(TEST_PROJECT_PATHS)
+        .collect();
+    paths.sort_unstable();
+    paths
 }
 
 fn fixture(version: &str) -> Fixture {
@@ -85,6 +94,61 @@ fn fixture(version: &str) -> Fixture {
         "file_count": 2,
     }))
     .expect("serialize source lock");
+    let project_documents = [
+        (
+            TEST_PROJECT_PATHS[0],
+            "---\nname: test-skill\ndescription: \"Test project skill\"\n---\n".to_owned(),
+        ),
+        (
+            TEST_PROJECT_PATHS[1],
+            "# LidFly\n\nProject instructions fixture.\n".to_owned(),
+        ),
+    ];
+    let project_relative = |path: &str| {
+        path.strip_prefix("claude-project/")
+            .expect("project relative path")
+            .to_owned()
+    };
+    let project_hashes = project_documents
+        .iter()
+        .map(|(path, content)| {
+            (
+                project_relative(path),
+                format!("{:x}", Sha256::digest(content.as_bytes())),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let claude_project_manifest = serde_json::to_string_pretty(&serde_json::json!({
+        "version": 1,
+        "files": project_hashes,
+    }))
+    .expect("serialize claude project manifest");
+    let mut project_tree_digest = Sha256::new();
+    for (relative, sha256) in &project_hashes {
+        let content = project_documents
+            .iter()
+            .find(|(path, _)| project_relative(path) == *relative)
+            .map(|(_, content)| content)
+            .expect("project fixture content");
+        project_tree_digest.update(relative.as_bytes());
+        project_tree_digest.update([0]);
+        project_tree_digest.update(content.len().to_string().as_bytes());
+        project_tree_digest.update([0]);
+        project_tree_digest.update(sha256.as_bytes());
+        project_tree_digest.update([0]);
+    }
+    let project_tree_sha256 = format!("{:x}", project_tree_digest.finalize());
+    let project_commit = "b".repeat(40);
+    let claude_project_lock = serde_json::to_string_pretty(&serde_json::json!({
+        "schema_version": 1,
+        "source": {
+            "repository": "https://github.com/awaik/direct-mcp-ai-project",
+            "commit": project_commit,
+        },
+        "project_tree_sha256": project_tree_sha256,
+        "file_count": 2,
+    }))
+    .expect("serialize claude project lock");
     let mut documents = vec![
         (
             BUNDLE_BASE_PATHS[0],
@@ -112,8 +176,12 @@ fn fixture(version: &str) -> Fixture {
         ),
         (BUNDLE_BASE_PATHS[6], skills_source_lock),
         (BUNDLE_BASE_PATHS[7], skills_manifest),
+        (BUNDLE_BASE_PATHS[8], claude_project_lock),
+        (BUNDLE_BASE_PATHS[9], claude_project_manifest),
     ];
     documents.extend(skill_documents);
+    documents.extend(project_documents);
+    documents.sort_by_key(|(relative, _)| *relative);
     let mut records = Vec::new();
     let mut bundle_digest = Sha256::new();
     for (relative, content) in documents {
@@ -134,7 +202,7 @@ fn fixture(version: &str) -> Fixture {
         bundle_digest.update([0]);
     }
     let metadata = BundleMetadata {
-        schema_version: 2,
+        schema_version: 3,
         plugin_version: version.to_owned(),
         plugin_bundle_sha256: format!("{:x}", bundle_digest.finalize()),
         source: SourceProvenance {
@@ -142,6 +210,12 @@ fn fixture(version: &str) -> Fixture {
             commit: source_commit,
             skills_tree_sha256,
             skill_count: 1,
+            file_count: 2,
+        },
+        claude_project: ClaudeProjectProvenance {
+            repository: "https://github.com/awaik/direct-mcp-ai-project".to_owned(),
+            commit: project_commit,
+            project_tree_sha256,
             file_count: 2,
         },
         files: records,
@@ -180,11 +254,78 @@ fn remote_core(fixture: &Fixture, app_data: &Path, version: &str) -> InstallerCo
 #[test]
 fn generated_plugin_bundle_is_accepted_by_the_rust_verifier() {
     let resources = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources");
-    verify_bundle(
+    let bundle = verify_bundle(
         resources.join("plugin-bundle"),
         &resources.join("plugin-bundle-files.json"),
     )
     .expect("verify the real bundle and metadata generated by the JavaScript builder");
+    let view = bundle
+        .claude_project_view()
+        .expect("derive the claude-project view from the real bundle");
+    assert!(view
+        .metadata
+        .files
+        .iter()
+        .any(|file| file.path == "CLAUDE.md"));
+    assert!(view
+        .metadata
+        .files
+        .iter()
+        .all(|file| !file.path.starts_with("claude-project/")
+            && file.path != ".lidfly-claude-project.json"));
+}
+
+#[test]
+fn claude_project_view_manages_the_user_folder_transactionally() {
+    let app_data = tempfile::tempdir().expect("create app data");
+    let fixture = fixture("1.1.1");
+    let bundle =
+        verify_bundle(fixture.root.clone(), &fixture.metadata).expect("verify fixture bundle");
+    let view = bundle.claude_project_view().expect("claude project view");
+    let view_paths: Vec<&str> = view
+        .metadata
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(
+        view_paths,
+        vec![".claude/skills/test-skill/SKILL.md", "CLAUDE.md"]
+    );
+    assert_ne!(
+        view.metadata.plugin_bundle_sha256,
+        bundle.metadata.plugin_bundle_sha256
+    );
+
+    let folder = app_data.path().join("LidFly");
+    let core = InstallerCore::new(InstallLayout::claude_project(&folder), view, "1.2.0");
+    assert!(!core.state_initialized());
+    let initial = core
+        .status_without_creating_root()
+        .expect("read status without creating the user folder");
+    assert_eq!(initial.phase, InstallerPhase::NotPrepared);
+    assert!(initial
+        .files
+        .iter()
+        .all(|file| file.condition == FileCondition::Missing));
+    assert!(!folder.exists());
+    let prepared = core
+        .prepare(false, false, FailPoint::None)
+        .expect("prepare the user folder");
+    assert!(prepared.status.can_open_codex);
+    assert!(core.state_initialized());
+    assert!(folder.join("CLAUDE.md").is_file());
+    assert!(folder.join(".claude/skills/test-skill/SKILL.md").is_file());
+
+    fs::write(folder.join("мои-заметки.md"), "user file").expect("write user file");
+    let status = core.status().expect("classify folder with user files");
+    assert!(status.unknown_files.contains(&"мои-заметки.md".to_owned()));
+    assert!(status.can_open_codex);
+
+    let removed = core.remove().expect("remove managed files only");
+    assert!(folder.join("мои-заметки.md").is_file());
+    assert!(!folder.join("CLAUDE.md").exists());
+    assert_eq!(removed.status.phase, InstallerPhase::NotPrepared);
 }
 
 #[test]

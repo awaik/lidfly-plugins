@@ -537,3 +537,91 @@ footer a {
     width: 100%;
   }
 }
+
+.claude-card {
+  border-top: 3px solid #e8ddf8;
+}
+
+.claude-folder {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 13px;
+  color: #5c5069;
+  background: #f7f4fa;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.claude-folder p {
+  margin: 0;
+}
+
+.claude-folder p + p {
+  margin-top: 6px;
+}
+
+.claude-folder code {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.claude-steps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.claude-step {
+  padding: 12px 14px;
+  border-radius: 13px;
+  background: #faf8fd;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #5c5069;
+}
+
+.claude-step p {
+  margin: 6px 0 0;
+}
+
+.mcp-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mcp-row code {
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #efe9f7;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.mcp-row .button {
+  min-height: 34px;
+  padding: 0 12px;
+  background: #251c31;
+  color: white;
+}
+
+.button-ghost {
+  color: #8a3448;
+  background: #f9edf0;
+}
+
+.claude-fineprint {
+  margin: 14px 0 0;
+  color: #8d8398;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .claude-steps {
+    grid-template-columns: 1fr;
+  }
+}

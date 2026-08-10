@@ -16,11 +16,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   BUNDLE_PATHS,
+  CLAUDE_PROJECT_LOCK_PATH,
+  CLAUDE_PROJECT_MANIFEST_PATH,
+  CLAUDE_PROJECT_PREFIX,
+  CLAUDE_PROJECT_REPOSITORY,
   GENERATED_SKILLS_MANIFEST_PATH,
+  assertNoForbiddenText,
   inspectSourceBundle,
   isAllowedBundlePath,
+  isSafeClaudeProjectSourcePath,
   isSafeRelativePath,
 } from "../../scripts/lib/plugin-bundle.mjs";
+import {
+  assertSnapshotContainsOnly,
+  isIncludedClaudeProjectSourcePath,
+} from "../../scripts/sync-claude-project.mjs";
 import {
   releaseFilenames,
   sha256File,
@@ -109,8 +119,119 @@ describe("plugin bundle contract", () => {
     expect(first.metadata.files).toEqual(second.metadata.files);
     expect(BUNDLE_PATHS).toContain(GENERATED_SKILLS_MANIFEST_PATH);
     expect(
-      BUNDLE_PATHS.filter((relativePath) => relativePath.endsWith("/SKILL.md")),
+      BUNDLE_PATHS.filter(
+        (relativePath) =>
+          relativePath.startsWith("plugins/lidfly/skills/") &&
+          relativePath.endsWith("/SKILL.md"),
+      ),
     ).toHaveLength(21);
+    expect([...BUNDLE_PATHS].sort()).toEqual([...BUNDLE_PATHS]);
+  });
+
+  it("embeds the claude-project snapshot with provenance", async () => {
+    expect(BUNDLE_PATHS).toContain(CLAUDE_PROJECT_MANIFEST_PATH);
+    expect(BUNDLE_PATHS).toContain(CLAUDE_PROJECT_LOCK_PATH);
+    const projectFiles = BUNDLE_PATHS.filter(
+      (relativePath) =>
+        relativePath.startsWith(CLAUDE_PROJECT_PREFIX) &&
+        relativePath !== CLAUDE_PROJECT_MANIFEST_PATH,
+    );
+    expect(projectFiles.length).toBeGreaterThan(0);
+    expect(projectFiles).toContain("claude-project/CLAUDE.md");
+
+    const inspected = await inspectSourceBundle(repositoryRoot);
+    expect(inspected.metadata.schema_version).toBe(3);
+    expect(inspected.metadata.claude_project.repository).toBe(
+      CLAUDE_PROJECT_REPOSITORY,
+    );
+    expect(inspected.metadata.claude_project.file_count).toBe(
+      projectFiles.length,
+    );
+    const lock = JSON.parse(
+      await readFile(
+        path.join(repositoryRoot, CLAUDE_PROJECT_LOCK_PATH),
+        "utf8",
+      ),
+    );
+    expect(inspected.metadata.claude_project.commit).toBe(lock.source.commit);
+    expect(inspected.metadata.claude_project.project_tree_sha256).toBe(
+      lock.project_tree_sha256,
+    );
+    for (const excludedPath of [
+      "claude-project/.claude/notify.mp3",
+      "claude-project/.claude/settings.json",
+      "claude-project/.codex/hooks.json",
+      "claude-project/.codex/notify.mp3",
+      "claude-project/.codex/notify_project.py",
+      "claude-project/.mcp.json",
+    ]) {
+      expect(projectFiles).not.toContain(excludedPath);
+    }
+    expect(
+      projectFiles.some((relativePath) =>
+        relativePath.startsWith("claude-project/.github/"),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps installer control paths out of the claude-project allowlist", () => {
+    expect(isAllowedBundlePath("claude-project/CLAUDE.md")).toBe(true);
+    expect(
+      isAllowedBundlePath("claude-project/.claude/skills/x/SKILL.md"),
+    ).toBe(true);
+    expect(isAllowedBundlePath("claude-project/.git/config")).toBe(false);
+    expect(
+      isAllowedBundlePath("claude-project/.lidfly-installer/state.json"),
+    ).toBe(false);
+    expect(isAllowedBundlePath("claude-project/../escape.md")).toBe(false);
+    expect(isSafeClaudeProjectSourcePath("a/\u0001b.md")).toBe(false);
+    expect(isSafeClaudeProjectSourcePath("a/\u007fb.md")).toBe(false);
+  });
+
+  it("filters executable project hooks and repository-only workflows", () => {
+    expect(isIncludedClaudeProjectSourcePath("CLAUDE.md")).toBe(true);
+    expect(isIncludedClaudeProjectSourcePath(".claude/settings.json")).toBe(
+      false,
+    );
+    expect(isIncludedClaudeProjectSourcePath(".codex/hooks.json")).toBe(false);
+    expect(
+      isIncludedClaudeProjectSourcePath(
+        ".github/workflows/release-on-push.yml",
+      ),
+    ).toBe(false);
+    expect(isIncludedClaudeProjectSourcePath(".mcp.json")).toBe(false);
+  });
+
+  it("detects unknown snapshot files before managed files are removed", async () => {
+    const snapshot = await mkdtemp(
+      path.join(os.tmpdir(), "lidfly-snapshot-preflight-test-"),
+    );
+    await writeFile(path.join(snapshot, "CLAUDE.md"), "managed");
+    await writeFile(path.join(snapshot, "user-notes.md"), "preserve");
+    await expect(
+      assertSnapshotContainsOnly(snapshot, ["CLAUDE.md"]),
+    ).rejects.toThrow(/user-notes\.md/u);
+    expect(await readFile(path.join(snapshot, "CLAUDE.md"), "utf8")).toBe(
+      "managed",
+    );
+    expect(await readFile(path.join(snapshot, "user-notes.md"), "utf8")).toBe(
+      "preserve",
+    );
+  });
+
+  it("allows documented secret placeholders but rejects real credentials", () => {
+    expect(() =>
+      assertNoForbiddenText(
+        "docs/setup-codex.md",
+        Buffer.from('headers = { Authorization = "Bearer YOUR_API_KEY" }'),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertNoForbiddenText(
+        "config.json",
+        Buffer.from('authorization = "Bearer sk-live-secret-value"'),
+      ),
+    ).toThrow(/секрет или токен/u);
   });
 
   it("rejects traversal, absolute paths and Windows separators", () => {

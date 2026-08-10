@@ -5,7 +5,7 @@ use url::Url;
 
 use crate::models::ClientError;
 
-const QUERY_VALUE_ENCODE_SET: &AsciiSet = &CONTROLS
+pub(crate) const QUERY_VALUE_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b' ')
     .add(b'"')
     .add(b'#')

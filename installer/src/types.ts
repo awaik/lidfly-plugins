@@ -62,6 +62,21 @@ export interface PluginContentInstallOutcome {
   release: PluginContentReleaseSummary;
   operation: OperationOutcome;
   codexOpened: boolean;
+  claudeOperation?: OperationOutcome | null;
+  claudeSyncError?: ClientError | null;
+}
+
+export interface ClaudeProjectStatusPayload {
+  status: InstallerStatus;
+  folderPath: string;
+  projectCommit: string;
+  mcpUrl: string;
+}
+
+export interface BundleSyncOutcome {
+  marketplace: OperationOutcome | null;
+  claude: OperationOutcome | null;
+  claudeSyncError: ClientError | null;
 }
 
 export interface ClientError {

@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "lidfly": {
+      "serverUrl": "https://lidfly.ru/mcp/v3"
+    }
+  }
+}

@@ -4,7 +4,9 @@
 
 `LidFly Codex Plugin Installer` — отдельное Tauri 2 приложение. Оно сохраняет проверенную локальную копию marketplace в per-user `app_data_dir`, затем открывает карточку плагина через документированный `codex://` URI. Пользователь сам нажимает кнопку установки в Codex и проходит OAuth LidFly по email.
 
-Приложение не устанавливает и не обновляет Codex, не вызывает Codex CLI и не редактирует `~/.codex/config.toml`, plugin cache или OAuth-сессию Codex.
+Вторая, необязательная цель — Claude Desktop (Cowork). Установщик создаёт пользовательскую папку `<home>/LidFly` со снапшотом клиентского шаблона `awaik/direct-mcp-ai-project` (CLAUDE.md, скиллы, инструкции), обновляет в ней только свои managed-файлы и открывает папку через документированный deep link `claude://cowork/new`. MCP-коннектор `https://lidfly.ru/mcp/v3` пользователь добавляет вручную в настройках Claude, там же проходит OAuth; проект Cowork он подключает сам через «Use existing folder».
+
+Приложение не устанавливает и не обновляет Codex или Claude Desktop, не вызывает их CLI и не редактирует `~/.codex/config.toml`, `claude_desktop_config.json`, plugin cache или OAuth-сессии этих приложений.
 
 ## Границы и поток данных
 
@@ -25,9 +27,17 @@ staging в <app_data_dir>/marketplace/.lidfly-installer
         │
         ▼
 codex://plugins/?marketplacePath=<percent-encoded-absolute-path>
+
+тот же verified bundle ──▶ view файлов claude-project/** (префикс снят)
+        │  тот же transaction engine, отдельный managed state
+        ▼
+<home>/LidFly/ (CLAUDE.md, .claude/skills/, инструкции)
+        │
+        ▼
+claude://cowork/new?folder=<encoded-path>&q=<encoded-prompt>
 ```
 
-Remote MCP остаётся только `https://lidfly.ru/mcp/v3` с transport `http`. В bundle нет исполняемого кода, API-ключей или OAuth-токенов.
+Remote MCP остаётся только `https://lidfly.ru/mcp/v3` с transport `http`. В marketplace-части bundle нет исполняемого кода; снапшот `claude-project/` переносит инструкции, скиллы и вспомогательные скрипты публичного шаблон-репозитория, но исключает автоматически исполняемые hooks и project MCP settings. Установщик оставшиеся скрипты не запускает и раскладывает как обычные данные. API-ключей и OAuth-токенов в bundle нет.
 
 ## Детерминированный plugin bundle
 
@@ -42,9 +52,13 @@ plugins/lidfly/assets/logo-dark.svg
 plugins/lidfly/assets/logo.svg
 plugins/lidfly/skills-source.lock.json
 plugins/lidfly/skills/.lidfly-generated-skills.json
+claude-project-source.lock.json
+claude-project/.lidfly-claude-project.json
 ```
 
 Остальной allowlist скиллов детерминированно строится из `plugins/lidfly/skills/.lidfly-generated-skills.json`. Manifest содержит точные относительные пути и SHA-256 файлов каждого скилла. Разрешены только `SKILL.md`, `agents/openai.yaml` и ресурсы внутри `assets/`, `references/` или `scripts/`; wildcard-копирование каталога плагина запрещено.
+
+Секция `claude-project/**` (bundle schema 3) строится из `claude-project/.lidfly-claude-project.json`, который генерирует `scripts/sync-claude-project.mjs` строго из закоммиченного `HEAD` локального клона `awaik/direct-mcp-ai-project` (`git archive`, не рабочая копия). Из пользовательского снапшота исключаются repository-only GitHub workflows, Claude project MCP/autoload settings, hooks и их аудиофайлы: подключение MCP остаётся явным действием пользователя в Claude. Пути снапшота — только печатный ASCII, без `..`, `\`, `.git/` и служебных имён установщика; `claude-project-source.lock.json` фиксирует repository, commit, детерминированный digest дерева и число файлов. Rust-проверка восстанавливает и сверяет этот контракт независимо.
 
 Сборщик отклоняет пропавшие, пустые, неизвестные, рассинхронизированные, symlink и hardlink-файлы, path traversal, локальные абсолютные пути, development hostnames и похожие на секреты значения. Он валидирует JSON, стабильные идентификаторы, MCP endpoint, ссылки на assets и checksum-manifest скиллов. Rust-проверка установщика независимо восстанавливает тот же allowlist из встроенного manifest перед записью файлов.
 
@@ -81,7 +95,14 @@ Tauri определяет `app_data_dir`; домашний каталог и `%
 │   ├── release.json
 │   └── release.json.sig
 └── active.json
+
+<home>/LidFly/                  (создаётся только по явному действию пользователя)
+├── CLAUDE.md, .claude/skills/, … — managed-файлы снапшота claude-project
+├── … собственные документы пользователя (не управляются и не удаляются)
+└── .lidfly-installer/          — тот же формат state/backups/transactions/logs
 ```
+
+Папкой `<home>/LidFly` управляет второй `InstallerCore` с тем же транзакционным движком: производный bundle-view содержит файлы `claude-project/**` со снятым префиксом и собственным пересчитанным `plugin_bundle_sha256`, поэтому обновление marketplace-части не помечает папку как устаревшую. Managed-пути каждого layout проверяются своей политикой (`is_allowed_bundle_path` для marketplace, `is_safe_claude_project_source_path` для папки), так что state одного контура не может адресовать файлы другого. Автоматическая синхронизация после обновлений трогает папку только если пользователь уже создал её; неизвестные (пользовательские) файлы никогда не удаляются, изменённые managed-файлы требуют явного Repair с backup.
 
 `installed-state.json` schema 2 — authoritative manifest и записывается последним. Он содержит версии installer/plugin, `bundle_origin`, source repository/commit, content key id, bundle hash, UTC-время успешной установки и полный список managed-файлов. Schema 0/1 мигрируется при чтении как `embedded`; неизвестная будущая schema блокирует запись.
 
@@ -112,6 +133,16 @@ codex://plugins/lidfly?marketplacePath=<encoded path to .agents/plugins/marketpl
 ```
 
 Имя плагина `lidfly` обязательно передаётся в path: без него Codex не может определить локальную карточку плагина. Тесты покрывают имя плагина, пробелы, кириллицу, macOS path, Windows drive letter и backslash. Системный handler открывается через официальный Tauri opener. Неудача handler отображается как «Codex не найден или не открывает ссылку» и не отменяет уже подготовленный bundle.
+
+## Claude deep link
+
+Для Claude Desktop используется документированный Anthropic deep link Cowork:
+
+```text
+claude://cowork/new?folder=<encoded absolute path to LidFly folder>&q=<encoded prompt>
+```
+
+Ссылка только открывает Cowork на папке и предзаполняет промпт — Claude показывает предупреждение «Prompt from an external link», и пользователь сам подтверждает выполнение. Постоянную запись в списке проектов Cowork установщик создать не может: пользователь один раз добавляет папку через «Use existing folder». Кодирование и ошибки handler обрабатываются так же, как для `codex://`; отсутствие Claude Desktop не отменяет уже подготовленную папку.
 
 ## Два updater-канала и подписи
 

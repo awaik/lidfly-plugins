@@ -4,10 +4,18 @@ import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const BUNDLE_SCHEMA_VERSION = 2;
+export const BUNDLE_SCHEMA_VERSION = 3;
+export const MIN_BUNDLE_SCHEMA_3_INSTALLER_VERSION = "1.3.0";
 export const GENERATED_SKILLS_MANIFEST_PATH =
   "plugins/lidfly/skills/.lidfly-generated-skills.json";
 export const SKILLS_SOURCE_LOCK_PATH = "plugins/lidfly/skills-source.lock.json";
+export const CLAUDE_PROJECT_REPOSITORY =
+  "https://github.com/awaik/direct-mcp-ai-project";
+export const CLAUDE_PROJECT_ROOT = "claude-project";
+export const CLAUDE_PROJECT_PREFIX = "claude-project/";
+export const CLAUDE_PROJECT_MANIFEST_PATH =
+  "claude-project/.lidfly-claude-project.json";
+export const CLAUDE_PROJECT_LOCK_PATH = "claude-project-source.lock.json";
 export const BUNDLE_BASE_PATHS = Object.freeze([
   ".agents/plugins/marketplace.json",
   "plugins/lidfly/.codex-plugin/plugin.json",
@@ -17,6 +25,8 @@ export const BUNDLE_BASE_PATHS = Object.freeze([
   "plugins/lidfly/assets/logo.svg",
   SKILLS_SOURCE_LOCK_PATH,
   GENERATED_SKILLS_MANIFEST_PATH,
+  CLAUDE_PROJECT_LOCK_PATH,
+  CLAUDE_PROJECT_MANIFEST_PATH,
 ]);
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
@@ -38,7 +48,11 @@ const FORBIDDEN_TEXT = [
   {
     label: "секрет или токен",
     pattern:
-      /(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization)\s*[=:]\s*["'][^"']+/iu,
+      /(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization)\s*[=:]\s*["']([^"']+)/giu,
+    allowMatch: (match) =>
+      /^(?:Bearer\s+)?(?:YOUR_|<|\{|\$|\*{3}|X{3}|EXAMPLE|PLACEHOLDER)/iu.test(
+        match[1] ?? "",
+      ),
   },
   {
     label: "private key",
@@ -71,8 +85,28 @@ function isSafeSkillRelativePath(relativePath) {
   );
 }
 
+export function isSafeClaudeProjectSourcePath(relativePath) {
+  if (!isSafeRelativePath(relativePath)) return false;
+  // Только ASCII: гарантирует одинаковый порядок сортировки allowlist в JS и Rust.
+  if (!/^[\x20-\x7e]+$/u.test(relativePath)) return false;
+  if (relativePath === ".git" || relativePath.startsWith(".git/")) return false;
+  if (
+    relativePath === ".lidfly-claude-project.json" ||
+    relativePath === ".lidfly-installer" ||
+    relativePath.startsWith(".lidfly-installer/")
+  ) {
+    return false;
+  }
+  return relativePath.split("/").every((part) => part.length > 0);
+}
+
 export function isAllowedBundlePath(relativePath) {
   if (BUNDLE_BASE_PATHS.includes(relativePath)) return true;
+  if (relativePath.startsWith(CLAUDE_PROJECT_PREFIX)) {
+    return isSafeClaudeProjectSourcePath(
+      relativePath.slice(CLAUDE_PROJECT_PREFIX.length),
+    );
+  }
   const prefix = "plugins/lidfly/skills/";
   if (!relativePath.startsWith(prefix)) return false;
   const remainder = relativePath.slice(prefix.length);
@@ -85,6 +119,60 @@ export function isAllowedBundlePath(relativePath) {
     skillName.length <= 64 &&
     isSafeSkillRelativePath(skillRelativePath)
   );
+}
+
+function parseClaudeProjectManifest(payload, label) {
+  if (!isObject(payload)) throw new Error(`${label} must be an object`);
+  assertExactKeys(payload, ["files", "version"], label);
+  if (payload.version !== 1) {
+    throw new Error(`${label} must use version 1`);
+  }
+  if (!isObject(payload.files) || Object.keys(payload.files).length === 0) {
+    throw new Error(`${label}.files must be a non-empty object`);
+  }
+  const records = [];
+  for (const relativePath of Object.keys(payload.files).sort()) {
+    if (!isSafeClaudeProjectSourcePath(relativePath)) {
+      throw new Error(`${label} contains unsafe project path: ${relativePath}`);
+    }
+    const sha256 = payload.files[relativePath];
+    if (typeof sha256 !== "string" || !SHA256_RE.test(sha256)) {
+      throw new Error(`${label}.${relativePath} has invalid SHA-256`);
+    }
+    records.push({
+      path: `${CLAUDE_PROJECT_PREFIX}${relativePath}`,
+      sha256,
+    });
+  }
+  return { payload, records };
+}
+
+function parseClaudeProjectLock(payload, label) {
+  if (!isObject(payload)) throw new Error(`${label} must be an object`);
+  assertExactKeys(
+    payload,
+    ["file_count", "project_tree_sha256", "schema_version", "source"],
+    label,
+  );
+  if (
+    payload.schema_version !== 1 ||
+    !Number.isSafeInteger(payload.file_count) ||
+    payload.file_count <= 0 ||
+    !SHA256_RE.test(payload.project_tree_sha256)
+  ) {
+    throw new Error(`${label} contains invalid snapshot metadata`);
+  }
+  if (!isObject(payload.source)) {
+    throw new Error(`${label}.source must be an object`);
+  }
+  assertExactKeys(payload.source, ["commit", "repository"], `${label}.source`);
+  if (
+    payload.source.repository !== CLAUDE_PROJECT_REPOSITORY ||
+    !/^[a-f0-9]{40}$/.test(payload.source.commit)
+  ) {
+    throw new Error(`${label} contains invalid source provenance`);
+  }
+  return payload;
 }
 
 function parseGeneratedSkillsManifest(payload, label) {
@@ -184,10 +272,41 @@ const generatedSkills = parseGeneratedSkillsManifest(
   GENERATED_SKILLS_MANIFEST_PATH,
 );
 
-export const BUNDLE_PATHS = Object.freeze([
-  ...BUNDLE_BASE_PATHS,
-  ...generatedSkills.records.map((record) => record.path),
-]);
+function loadClaudeProjectAllowlist() {
+  let raw;
+  try {
+    raw = readFileSync(
+      path.join(repositoryRoot, CLAUDE_PROJECT_MANIFEST_PATH),
+      "utf8",
+    );
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+  return parseClaudeProjectManifest(
+    JSON.parse(raw),
+    CLAUDE_PROJECT_MANIFEST_PATH,
+  );
+}
+
+const claudeProjectAllowlist = loadClaudeProjectAllowlist();
+
+function requireClaudeProjectAllowlist() {
+  if (!claudeProjectAllowlist) {
+    throw new Error(
+      `${CLAUDE_PROJECT_MANIFEST_PATH} is missing — run scripts/sync-claude-project.mjs first`,
+    );
+  }
+  return claudeProjectAllowlist;
+}
+
+export const BUNDLE_PATHS = Object.freeze(
+  [
+    ...BUNDLE_BASE_PATHS,
+    ...generatedSkills.records.map((record) => record.path),
+    ...(claudeProjectAllowlist?.records ?? []).map((record) => record.path),
+  ].sort(),
+);
 
 export function stableJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -256,6 +375,26 @@ export function validateBundleMetadata(metadata) {
     },
     "Bundle source metadata",
   );
+  if (!isObject(metadata.claude_project)) {
+    throw new Error("Bundle claude_project metadata must be an object");
+  }
+  assertExactKeys(
+    metadata.claude_project,
+    ["commit", "file_count", "project_tree_sha256", "repository"],
+    "Bundle claude_project metadata",
+  );
+  parseClaudeProjectLock(
+    {
+      schema_version: 1,
+      source: {
+        repository: metadata.claude_project.repository,
+        commit: metadata.claude_project.commit,
+      },
+      project_tree_sha256: metadata.claude_project.project_tree_sha256,
+      file_count: metadata.claude_project.file_count,
+    },
+    "Bundle claude_project metadata",
+  );
   if (
     !Array.isArray(metadata.files) ||
     metadata.files.length !== BUNDLE_PATHS.length
@@ -278,11 +417,19 @@ export function validateBundleMetadata(metadata) {
   }
 }
 
-function assertNoForbiddenText(relativePath, bytes) {
+export function assertNoForbiddenText(relativePath, bytes) {
   const text = bytes.toString("utf8");
   for (const forbidden of FORBIDDEN_TEXT) {
-    if (forbidden.pattern.test(text)) {
-      throw new Error(`${relativePath} contains ${forbidden.label}`);
+    if (!forbidden.allowMatch) {
+      if (forbidden.pattern.test(text)) {
+        throw new Error(`${relativePath} contains ${forbidden.label}`);
+      }
+      continue;
+    }
+    for (const match of text.matchAll(forbidden.pattern)) {
+      if (!forbidden.allowMatch(match)) {
+        throw new Error(`${relativePath} contains ${forbidden.label}`);
+      }
     }
   }
 }
@@ -389,14 +536,82 @@ function validateGeneratedSkills(files) {
   return sourceLock;
 }
 
+function validateClaudeProject(files) {
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  const manifestFile = byPath.get(CLAUDE_PROJECT_MANIFEST_PATH);
+  if (!manifestFile) {
+    throw new Error(
+      `Claude project manifest is missing: ${CLAUDE_PROJECT_MANIFEST_PATH}`,
+    );
+  }
+  const bundledProject = parseClaudeProjectManifest(
+    parseJson(manifestFile.bytes, CLAUDE_PROJECT_MANIFEST_PATH),
+    CLAUDE_PROJECT_MANIFEST_PATH,
+  );
+  const expectedRecords = requireClaudeProjectAllowlist().records;
+  if (stableJson(bundledProject.records) !== stableJson(expectedRecords)) {
+    throw new Error(
+      "Claude project manifest differs from the source allowlist",
+    );
+  }
+  for (const expected of bundledProject.records) {
+    const file = byPath.get(expected.path);
+    if (!file)
+      throw new Error(`Claude project file is missing: ${expected.path}`);
+    const sha256 = createHash("sha256").update(file.bytes).digest("hex");
+    if (sha256 !== expected.sha256) {
+      throw new Error(
+        `Claude project hash differs from manifest: ${expected.path}`,
+      );
+    }
+  }
+  const lockFile = byPath.get(CLAUDE_PROJECT_LOCK_PATH);
+  if (!lockFile) {
+    throw new Error(
+      `Claude project provenance is missing: ${CLAUDE_PROJECT_LOCK_PATH}`,
+    );
+  }
+  const lock = parseClaudeProjectLock(
+    parseJson(lockFile.bytes, CLAUDE_PROJECT_LOCK_PATH),
+    CLAUDE_PROJECT_LOCK_PATH,
+  );
+  const treeDigest = createHash("sha256");
+  for (const expected of bundledProject.records) {
+    const file = byPath.get(expected.path);
+    treeDigest.update(
+      expected.path.slice(CLAUDE_PROJECT_PREFIX.length),
+      "utf8",
+    );
+    treeDigest.update("\0");
+    treeDigest.update(String(file.bytes.byteLength), "ascii");
+    treeDigest.update("\0");
+    treeDigest.update(expected.sha256, "ascii");
+    treeDigest.update("\0");
+  }
+  if (
+    lock.file_count !== bundledProject.records.length ||
+    lock.project_tree_sha256 !== treeDigest.digest("hex")
+  ) {
+    throw new Error("Claude project provenance does not match the snapshot");
+  }
+  return lock;
+}
+
+const MARKETPLACE_MANIFEST_PATH = ".agents/plugins/marketplace.json";
+const PLUGIN_MANIFEST_PATH = "plugins/lidfly/.codex-plugin/plugin.json";
+const PLUGIN_MCP_PATH = "plugins/lidfly/.mcp.json";
+
 function validatePluginDocuments(files) {
   const byPath = new Map(files.map((file) => [file.path, file]));
   const marketplace = parseJson(
-    byPath.get(BUNDLE_PATHS[0]).bytes,
-    BUNDLE_PATHS[0],
+    byPath.get(MARKETPLACE_MANIFEST_PATH).bytes,
+    MARKETPLACE_MANIFEST_PATH,
   );
-  const plugin = parseJson(byPath.get(BUNDLE_PATHS[1]).bytes, BUNDLE_PATHS[1]);
-  const mcp = parseJson(byPath.get(BUNDLE_PATHS[2]).bytes, BUNDLE_PATHS[2]);
+  const plugin = parseJson(
+    byPath.get(PLUGIN_MANIFEST_PATH).bytes,
+    PLUGIN_MANIFEST_PATH,
+  );
+  const mcp = parseJson(byPath.get(PLUGIN_MCP_PATH).bytes, PLUGIN_MCP_PATH);
 
   if (
     marketplace.name !== "lidfly" ||
@@ -482,6 +697,7 @@ export async function inspectSourceBundle(repositoryRoot) {
   const rootStat = await stat(root);
   if (!rootStat.isDirectory())
     throw new Error(`Repository root is not a directory: ${root}`);
+  requireClaudeProjectAllowlist();
   const files = [];
   for (const relativePath of BUNDLE_PATHS)
     files.push(await readAllowedFile(root, relativePath));
@@ -497,7 +713,20 @@ export async function inspectSourceBundle(repositoryRoot) {
       `Plugin skills differ from generated allowlist: ${actualSkillPaths.join(", ")}`,
     );
   }
+  const actualProjectPaths = await listSkillTree(
+    path.join(root, CLAUDE_PROJECT_ROOT),
+    CLAUDE_PROJECT_ROOT,
+  );
+  const expectedProjectPaths = BUNDLE_PATHS.filter((relativePath) =>
+    relativePath.startsWith(CLAUDE_PROJECT_PREFIX),
+  ).sort();
+  if (stableJson(actualProjectPaths) !== stableJson(expectedProjectPaths)) {
+    throw new Error(
+      `Claude project snapshot differs from its manifest — run scripts/sync-claude-project.mjs`,
+    );
+  }
   const source = validateGeneratedSkills(files);
+  const claudeProject = validateClaudeProject(files);
   const documents = validatePluginDocuments(files);
   const records = files.map((file) => ({
     path: file.path,
@@ -514,6 +743,12 @@ export async function inspectSourceBundle(repositoryRoot) {
       skills_tree_sha256: source.skills_tree_sha256,
       skill_count: source.skill_count,
       file_count: source.file_count,
+    },
+    claude_project: {
+      repository: claudeProject.source.repository,
+      commit: claudeProject.source.commit,
+      project_tree_sha256: claudeProject.project_tree_sha256,
+      file_count: claudeProject.file_count,
     },
     files: records,
   };
@@ -551,6 +786,20 @@ export async function inspectBuiltBundle(bundleRoot, metadataPath) {
   };
   if (stableJson(metadata.source) !== stableJson(expectedSource)) {
     throw new Error("Built bundle provenance differs from bundle metadata");
+  }
+  const claudeProject = validateClaudeProject(files);
+  const expectedClaudeProject = {
+    repository: claudeProject.source.repository,
+    commit: claudeProject.source.commit,
+    project_tree_sha256: claudeProject.project_tree_sha256,
+    file_count: claudeProject.file_count,
+  };
+  if (
+    stableJson(metadata.claude_project) !== stableJson(expectedClaudeProject)
+  ) {
+    throw new Error(
+      "Built bundle claude-project provenance differs from bundle metadata",
+    );
   }
   validatePluginDocuments(files);
   return { files, metadata };

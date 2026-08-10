@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "lidfly": {
+      "type": "http",
+      "url": "https://lidfly.ru/mcp/v3"
+    }
+  }
+}

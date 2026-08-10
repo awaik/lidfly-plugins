@@ -4,7 +4,11 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { inspectSourceBundle, stableJson } from "./lib/plugin-bundle.mjs";
+import {
+  MIN_BUNDLE_SCHEMA_3_INSTALLER_VERSION,
+  inspectSourceBundle,
+  stableJson,
+} from "./lib/plugin-bundle.mjs";
 import {
   CONTENT_KEY_ID,
   pluginContentFilename,
@@ -23,7 +27,7 @@ function usage() {
 Options:
   --output <directory>          Output directory (required).
   --published-at <ISO-8601>     Defaults to current time.
-  --min-installer-version <v>   Defaults to 1.2.0.
+  --min-installer-version <v>   Defaults to ${MIN_BUNDLE_SCHEMA_3_INSTALLER_VERSION}.
   --key-id <id>                 Defaults to ${CONTENT_KEY_ID}.
   --skip-repository-metadata    Do not update plugin-releases/<version>.json.
 `;
@@ -32,7 +36,7 @@ Options:
 function parseArgs(argv) {
   const args = {
     keyId: CONTENT_KEY_ID,
-    minInstallerVersion: "1.2.0",
+    minInstallerVersion: MIN_BUNDLE_SCHEMA_3_INSTALLER_VERSION,
     output: null,
     privateKey: null,
     publishedAt: new Date().toISOString(),
@@ -71,9 +75,45 @@ function octal(value, length) {
   return `${encoded.padStart(length - 1, "0")}\0`;
 }
 
-function tarHeader(name, size) {
-  if (Buffer.byteLength(name) > 100)
-    throw new Error(`tar path is too long: ${name}`);
+function compareSemver(left, right) {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  if (
+    leftParts.length !== 3 ||
+    rightParts.length !== 3 ||
+    [...leftParts, ...rightParts].some(
+      (part) => !Number.isSafeInteger(part) || part < 0,
+    )
+  ) {
+    throw new Error("--min-installer-version must use X.Y.Z");
+  }
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] !== rightParts[index]) {
+      return leftParts[index] - rightParts[index];
+    }
+  }
+  return 0;
+}
+
+function splitTarPath(name) {
+  if (Buffer.byteLength(name) <= 100) return { name, prefix: "" };
+  for (let index = 0; index < name.length; index += 1) {
+    if (name[index] !== "/") continue;
+    const prefix = name.slice(0, index);
+    const suffix = name.slice(index + 1);
+    if (
+      Buffer.byteLength(prefix) <= 155 &&
+      suffix.length > 0 &&
+      Buffer.byteLength(suffix) <= 100
+    ) {
+      return { name: suffix, prefix };
+    }
+  }
+  throw new Error(`tar path is too long: ${name}`);
+}
+
+function tarHeader(fullName, size) {
+  const { name, prefix } = splitTarPath(fullName);
   const header = Buffer.alloc(512);
   header.write(name, 0, 100, "utf8");
   header.write(octal(0o644, 8), 100, 8, "ascii");
@@ -87,6 +127,7 @@ function tarHeader(name, size) {
   header.write("00", 263, 2, "ascii");
   header.write("root", 265, 4, "ascii");
   header.write("root", 297, 4, "ascii");
+  header.write(prefix, 345, 155, "utf8");
   const checksum = [...header].reduce((sum, byte) => sum + byte, 0);
   header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, 8, "ascii");
   return header;
@@ -120,6 +161,17 @@ try {
     path.resolve(process.cwd(), args.privateKey),
   );
   const inspected = await inspectSourceBundle(root);
+  if (
+    inspected.metadata.schema_version >= 3 &&
+    compareSemver(
+      args.minInstallerVersion,
+      MIN_BUNDLE_SCHEMA_3_INSTALLER_VERSION,
+    ) < 0
+  ) {
+    throw new Error(
+      `Bundle schema ${inspected.metadata.schema_version} requires installer ${MIN_BUNDLE_SCHEMA_3_INSTALLER_VERSION} or newer`,
+    );
+  }
   const metadataBytes = Buffer.from(stableJson(inspected.metadata));
   const entries = [
     { name: "plugin-bundle-files.json", bytes: metadataBytes },

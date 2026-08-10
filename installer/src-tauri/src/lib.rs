@@ -1,4 +1,5 @@
 pub mod bundle;
+pub mod claude_uri;
 pub mod codex_uri;
 pub mod content_update;
 pub mod models;
@@ -8,13 +9,19 @@ pub mod state;
 use std::path::PathBuf;
 
 use bundle::{verify_bundle, VerifiedBundle};
+use claude_uri::build_claude_cowork_uri;
 use codex_uri::build_codex_plugin_uri;
 use content_update::ContentUpdateClient;
 use models::{
-    ClientError, InstallerStatus, OperationOutcome, PluginContentInstallOutcome,
-    PluginContentUpdateStatus,
+    BundleSyncOutcome, ClaudeProjectStatusPayload, ClientError, InstallerStatus, OperationOutcome,
+    PluginContentInstallOutcome, PluginContentUpdateStatus,
 };
 use operations::{FailPoint, InstallLayout, InstallerCore};
+
+const CLAUDE_FOLDER_NAME: &str = "LidFly";
+const LIDFLY_MCP_URL: &str = "https://lidfly.ru/mcp/v3";
+const CLAUDE_DEFAULT_PROMPT: &str =
+    "Прочитай файл CLAUDE.md в этой папке и помоги мне начать работу с LidFly.";
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -62,6 +69,45 @@ fn installer_core(app: &AppHandle) -> Result<InstallerCore, ClientError> {
         bundle,
         env!("CARGO_PKG_VERSION"),
     ))
+}
+
+fn claude_root(app: &AppHandle) -> Result<PathBuf, ClientError> {
+    let home = app.path().home_dir().map_err(|error| {
+        ClientError::new(
+            "home_dir_unavailable",
+            format!("Не удалось определить домашнюю папку: {error}"),
+        )
+    })?;
+    Ok(home.join(CLAUDE_FOLDER_NAME))
+}
+
+fn claude_core_from_bundle(
+    app: &AppHandle,
+    bundle: &VerifiedBundle,
+) -> Result<InstallerCore, ClientError> {
+    Ok(InstallerCore::new(
+        InstallLayout::claude_project(&claude_root(app)?),
+        bundle.claude_project_view()?,
+        env!("CARGO_PKG_VERSION"),
+    ))
+}
+
+fn claude_core(app: &AppHandle) -> Result<(InstallerCore, String), ClientError> {
+    let bundle = content_client(app)?.select_bundle(embedded_bundle(app)?)?;
+    let project_commit = bundle.metadata.claude_project.commit.clone();
+    Ok((claude_core_from_bundle(app, &bundle)?, project_commit))
+}
+
+fn sync_claude_folder_if_initialized(
+    core: &InstallerCore,
+) -> (Option<OperationOutcome>, Option<ClientError>) {
+    if !core.state_initialized() {
+        return (None, None);
+    }
+    match core.prepare(false, false, FailPoint::None) {
+        Ok(outcome) => (Some(outcome), None),
+        Err(error) => (None, Some(error)),
+    }
 }
 
 fn current_plugin_version(status: &InstallerStatus) -> String {
@@ -139,33 +185,58 @@ async fn install_plugin_content_update(
             allow_same_version_repair,
         )
         .await?;
+    let claude_core_for_sync = claude_core_from_bundle(&app, &bundle)?;
     let core = InstallerCore::new(
         InstallLayout::new(&app_data_dir(&app)?),
         bundle,
         env!("CARGO_PKG_VERSION"),
     );
     let operation = core.prepare(allow_modified, false, FailPoint::None)?;
+    let (claude_operation, claude_sync_error) =
+        sync_claude_folder_if_initialized(&claude_core_for_sync);
     let uri = build_codex_plugin_uri(&core.layout.marketplace_manifest)?;
     let codex_opened = app.opener().open_url(uri.as_str(), None::<&str>).is_ok();
     Ok(PluginContentInstallOutcome {
         release,
         operation,
         codex_opened,
+        claude_operation,
+        claude_sync_error,
     })
 }
 
 #[tauri::command]
-fn sync_bundle_after_update(app: AppHandle) -> Result<Option<OperationOutcome>, ClientError> {
+fn sync_bundle_after_update(app: AppHandle) -> Result<BundleSyncOutcome, ClientError> {
     let core = installer_core(&app)?;
     let status = core.status()?;
-    if status.installed_plugin_version.is_some()
+    let marketplace = if status.installed_plugin_version.is_some()
         && status.update_required
         && !status.needs_repair
         && !status.downgrade_detected
     {
-        return core.prepare(false, false, FailPoint::None).map(Some);
-    }
-    Ok(None)
+        Some(core.prepare(false, false, FailPoint::None)?)
+    } else {
+        None
+    };
+    let (claude_core_instance, _) = claude_core(&app)?;
+    let (claude, claude_sync_error) = if claude_core_instance.state_initialized() {
+        let claude_status = claude_core_instance.status()?;
+        if claude_status.update_required
+            && !claude_status.needs_repair
+            && !claude_status.downgrade_detected
+        {
+            sync_claude_folder_if_initialized(&claude_core_instance)
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
+    Ok(BundleSyncOutcome {
+        marketplace,
+        claude,
+        claude_sync_error,
+    })
 }
 
 #[tauri::command]
@@ -193,6 +264,56 @@ fn open_in_codex(app: AppHandle) -> Result<String, ClientError> {
             )
         })?;
     Ok(uri.to_string())
+}
+
+#[tauri::command]
+fn get_claude_status(app: AppHandle) -> Result<ClaudeProjectStatusPayload, ClientError> {
+    let (core, project_commit) = claude_core(&app)?;
+    let status = core.status_without_creating_root()?;
+    Ok(ClaudeProjectStatusPayload {
+        folder_path: core.root_path().to_string_lossy().into_owned(),
+        project_commit,
+        mcp_url: LIDFLY_MCP_URL.to_owned(),
+        status,
+    })
+}
+
+#[tauri::command]
+fn prepare_claude_folder(
+    app: AppHandle,
+    allow_modified: bool,
+    allow_downgrade: bool,
+) -> Result<OperationOutcome, ClientError> {
+    let (core, _) = claude_core(&app)?;
+    core.prepare(allow_modified, allow_downgrade, FailPoint::None)
+}
+
+#[tauri::command]
+fn open_in_claude(app: AppHandle) -> Result<String, ClientError> {
+    let (core, _) = claude_core(&app)?;
+    let status = core.status()?;
+    if !status.can_open_codex {
+        return Err(ClientError::new(
+            "claude_folder_not_ready",
+            "Сначала создайте и проверьте папку LidFly.",
+        ));
+    }
+    let uri = build_claude_cowork_uri(core.root_path(), CLAUDE_DEFAULT_PROMPT)?;
+    app.opener()
+        .open_url(uri.as_str(), None::<&str>)
+        .map_err(|error| {
+            ClientError::new(
+                "claude_handler_unavailable",
+                format!("Claude Desktop не найден или не открыл ссылку: {error}"),
+            )
+        })?;
+    Ok(uri.to_string())
+}
+
+#[tauri::command]
+fn remove_claude_folder(app: AppHandle) -> Result<OperationOutcome, ClientError> {
+    let (core, _) = claude_core(&app)?;
+    core.remove()
 }
 
 #[tauri::command]
@@ -224,6 +345,10 @@ pub fn run() {
             sync_bundle_after_update,
             remove_prepared_files,
             open_in_codex,
+            get_claude_status,
+            prepare_claude_folder,
+            open_in_claude,
+            remove_claude_folder,
             open_logs
         ])
         .run(tauri::generate_context!())

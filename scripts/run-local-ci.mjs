@@ -49,17 +49,67 @@ run(npmCommand, ["test"], installerRoot);
 run(npxCommand, ["tauri", "build", "--no-bundle"], installerRoot);
 
 const forbiddenTrackedArtifact =
-  /(^|\/)(\.DS_Store|AGENTS\.md|CLAUDE\.md)$|\.(dmg|app\.tar\.gz|exe|sig|p12|pfx|key)$/u;
+  /^(?:AGENTS|CLAUDE)\.md$|(^|\/)\.DS_Store$|\.(dmg|app\.tar\.gz|exe|mp3|sig|p12|pfx|key)$/u;
+// The guarded promotion script commits this signed metadata pointer as a pair.
+const allowedTrackedArtifacts = new Set(["plugin-releases/latest.json.sig"]);
 const trackedFiles = output("git", ["ls-files", "-z"])
   .split("\0")
   .filter(Boolean);
-const forbiddenFiles = trackedFiles.filter((file) =>
-  forbiddenTrackedArtifact.test(file),
+const trackedFileSet = new Set(trackedFiles);
+const forbiddenFiles = trackedFiles.filter(
+  (file) =>
+    forbiddenTrackedArtifact.test(file) && !allowedTrackedArtifacts.has(file),
 );
 if (forbiddenFiles.length > 0) {
   throw new Error(
     `Forbidden local, binary, signature, or key artifact is tracked:\n${forbiddenFiles.join("\n")}`,
   );
+}
+
+const claudeProjectManifestPath = "claude-project/.lidfly-claude-project.json";
+if (trackedFileSet.has(claudeProjectManifestPath)) {
+  const manifest = JSON.parse(
+    readFileSync(path.join(repositoryRoot, claudeProjectManifestPath), "utf8"),
+  );
+  if (
+    manifest?.version !== 1 ||
+    !manifest.files ||
+    typeof manifest.files !== "object" ||
+    Array.isArray(manifest.files)
+  ) {
+    throw new Error("Claude project snapshot manifest is invalid");
+  }
+  const expectedTrackedSnapshot = new Set([
+    claudeProjectManifestPath,
+    ...Object.keys(manifest.files).map((relativePath) =>
+      path.posix.join("claude-project", relativePath),
+    ),
+  ]);
+  const actualTrackedSnapshot = trackedFiles.filter((file) =>
+    file.startsWith("claude-project/"),
+  );
+  const missingTrackedSnapshot = [...expectedTrackedSnapshot].filter(
+    (file) => !trackedFileSet.has(file),
+  );
+  const unexpectedTrackedSnapshot = actualTrackedSnapshot.filter(
+    (file) => !expectedTrackedSnapshot.has(file),
+  );
+  if (
+    missingTrackedSnapshot.length > 0 ||
+    unexpectedTrackedSnapshot.length > 0 ||
+    !trackedFileSet.has("claude-project-source.lock.json")
+  ) {
+    throw new Error(
+      [
+        "Tracked Claude project snapshot differs from its manifest.",
+        ...missingTrackedSnapshot.map((file) => `Missing: ${file}`),
+        ...unexpectedTrackedSnapshot.map((file) => `Unexpected: ${file}`),
+        ...(!trackedFileSet.has("claude-project-source.lock.json")
+          ? ["Missing: claude-project-source.lock.json"]
+          : []),
+      ].join("\n"),
+    );
+  }
 }
 
 run("git", ["diff", "--check"]);

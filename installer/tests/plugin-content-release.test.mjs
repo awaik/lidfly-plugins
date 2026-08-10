@@ -11,6 +11,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { gunzipSync } from "node:zlib";
 
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -43,7 +44,7 @@ afterAll(async () => {
   await rm(temporaryRoot, { recursive: true, force: true });
 });
 
-async function build(output) {
+async function build(output, extraArguments = []) {
   await mkdir(output);
   await execFileAsync(
     process.execPath,
@@ -56,10 +57,34 @@ async function build(output) {
       "--published-at",
       "2026-07-27T00:00:00.000Z",
       "--skip-repository-metadata",
+      ...extraArguments,
     ],
     { cwd: repositoryRoot },
   );
   return JSON.parse(await readFile(path.join(output, "release.json"), "utf8"));
+}
+
+function readTarEntryNames(archive) {
+  const tar = gunzipSync(archive);
+  const names = [];
+  for (let offset = 0; offset + 512 <= tar.length;) {
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const readString = (start, end) => {
+      const field = header.subarray(start, end);
+      const nul = field.indexOf(0);
+      return field.subarray(0, nul < 0 ? field.length : nul).toString("utf8");
+    };
+    const name = readString(0, 100);
+    const prefix = readString(345, 500);
+    names.push(prefix ? `${prefix}/${name}` : name);
+    const size = Number.parseInt(readString(124, 136).trim() || "0", 8);
+    if (!Number.isSafeInteger(size) || size < 0) {
+      throw new Error("Invalid tar entry size in test archive");
+    }
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  return names;
 }
 
 describe("plugin content release", () => {
@@ -100,6 +125,13 @@ describe("plugin content release", () => {
     ).toEqual(
       await readFile(path.join(secondDirectory, second.bundle.filename)),
     );
+    const archive = await readFile(
+      path.join(firstDirectory, first.bundle.filename),
+    );
+    const longEntry =
+      "plugin-bundle/claude-project/.openclaw/skills/video-article-writer/references/transcription-workflow.md";
+    expect(Buffer.byteLength(longEntry)).toBeGreaterThan(100);
+    expect(readTarEntryNames(archive)).toContain(longEntry);
 
     const verified = await verifyContentRelease({
       directory: firstDirectory,
@@ -107,7 +139,14 @@ describe("plugin content release", () => {
       publicKey: await readFile(publicKeyPath),
     });
     expect(verified.manifest.plugin.name).toBe("lidfly");
-    expect(verified.manifest.min_installer_version).toBe("1.2.0");
+    expect(verified.manifest.min_installer_version).toBe("1.3.0");
+  });
+
+  it("rejects schema 3 content for installers without snapshot support", async () => {
+    const directory = path.join(temporaryRoot, "old-installer-minimum");
+    await expect(
+      build(directory, ["--min-installer-version", "1.2.0"]),
+    ).rejects.toThrow(/requires installer 1\.3\.0 or newer/u);
   });
 
   it("fails closed after immutable bundle tampering", async () => {
