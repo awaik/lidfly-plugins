@@ -44,9 +44,9 @@ if ($LASTEXITCODE -ne 0) {
 $env:TAURI_UPDATER_PUBLIC_KEY = (Get-Content -Raw $env:TAURI_UPDATER_PUBLIC_KEY_PATH).Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw $env:TAURI_SIGNING_PRIVATE_KEY_PATH).Trim()
 $releaseConfig = Join-Path $env:TEMP "lidfly-tauri-release-$PID.json"
-$source = Join-Path $installerRoot "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\LidFly Codex Plugin Installer_${Version}_x64-setup.exe"
+$source = Join-Path $installerRoot "src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\LidFly Plugin Lapki_${Version}_x64-setup.exe"
 $application = Join-Path $installerRoot 'src-tauri\target\x86_64-pc-windows-msvc\release\lidfly-codex-plugin-installer.exe'
-$installerName = "LidFly Codex Plugin Installer_${Version}_x64-setup.exe"
+$installerName = "LidFly Plugin Lapki_${Version}_x64-setup.exe"
 $installer = Join-Path $artifactsDir $installerName
 $signature = "$installer.sig"
 

@@ -9,7 +9,7 @@ import {
   validateBundleMetadata,
 } from "./plugin-bundle.mjs";
 
-export const APP_NAME = "LidFly Codex Plugin Installer";
+export const APP_NAME = "LidFly Plugin Lapki";
 
 export function assertVersion(version) {
   if (!/^\d+\.\d+\.\d+$/.test(version ?? "")) {

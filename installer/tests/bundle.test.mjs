@@ -277,11 +277,11 @@ describe("plugin bundle contract", () => {
 describe("release artifact contract", () => {
   it("requires exactly the five versioned filenames", () => {
     expect(releaseFilenames("1.2.3")).toEqual([
-      "LidFly Codex Plugin Installer_1.2.3_universal.dmg",
-      "LidFly Codex Plugin Installer_1.2.3_universal.app.tar.gz",
-      "LidFly Codex Plugin Installer_1.2.3_universal.app.tar.gz.sig",
-      "LidFly Codex Plugin Installer_1.2.3_x64-setup.exe",
-      "LidFly Codex Plugin Installer_1.2.3_x64-setup.exe.sig",
+      "LidFly Plugin Lapki_1.2.3_universal.dmg",
+      "LidFly Plugin Lapki_1.2.3_universal.app.tar.gz",
+      "LidFly Plugin Lapki_1.2.3_universal.app.tar.gz.sig",
+      "LidFly Plugin Lapki_1.2.3_x64-setup.exe",
+      "LidFly Plugin Lapki_1.2.3_x64-setup.exe.sig",
     ]);
   });
 
@@ -350,7 +350,7 @@ describe("release artifact contract", () => {
     await writeFile(
       path.join(
         aliasedDirectory,
-        `LidFly Codex Plugin Installer_${releaseVersion}_universal (1).dmg`,
+        `LidFly Plugin Lapki_${releaseVersion}_universal (1).dmg`,
       ),
       "alias",
     );

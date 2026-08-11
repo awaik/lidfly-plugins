@@ -352,5 +352,5 @@ pub fn run() {
             open_logs
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run LidFly Codex Plugin Installer");
+        .expect("failed to run LidFly Plugin Lapki");
 }

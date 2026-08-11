@@ -32,128 +32,142 @@ app.innerHTML = `
     <header class="brand">
       <div class="brand-mark" aria-hidden="true"><span>L</span></div>
       <div>
-        <div class="eyebrow">Официальный установщик</div>
-        <h1>Плагин LidFly для Codex</h1>
+        <div class="eyebrow">Официальное приложение LidFly</div>
+        <h1>LidFly Plugin Lapki</h1>
       </div>
       <div id="version" class="version"></div>
     </header>
 
-    <section class="intro" aria-labelledby="intro-title">
-      <div class="intro-copy">
-        <p class="kicker">Без терминала и ручной настройки</p>
-        <h2 id="intro-title">Три шага — и LidFly появится в новом чате Codex</h2>
-      </div>
-      <ol class="steps">
-        <li><span>1</span><p>Приложение безопасно сохранит официальный плагин LidFly на этом компьютере.</p></li>
-        <li><span>2</span><p>Откроется Codex — там нужно нажать штатную кнопку установки и войти по email.</p></li>
-        <li><span>3</span><p>Полностью перезапустите Codex и начните новый чат.</p></li>
-      </ol>
-    </section>
-
-    <section id="plugin-update-panel" class="plugin-update-panel" aria-live="polite" hidden>
-      <div class="update-symbol" aria-hidden="true">↓</div>
-      <div class="update-copy">
-        <div class="eyebrow">Обновление плагина</div>
-        <h2 id="plugin-update-title">Доступны новые скиллы LidFly</h2>
-        <p id="plugin-update-message">Обновление не требует перезапуска установщика.</p>
-        <progress id="plugin-update-progress" class="update-progress" hidden></progress>
-      </div>
-      <button id="install-plugin-update" class="button button-update">
-        Обновить плагин
-      </button>
-    </section>
-
     <section id="update-panel" class="update-panel" aria-live="polite" hidden>
       <div class="update-symbol" aria-hidden="true">↻</div>
       <div class="update-copy">
-        <div class="eyebrow">Доступна новая версия</div>
-        <h2 id="update-title">Обновление установщика LidFly</h2>
+        <div class="eyebrow">Обновление приложения</div>
+        <h2 id="update-title">Вышла новая версия LidFly Plugin Lapki</h2>
         <p id="update-message">
-          Обновим приложение и официальный пакет плагина, не затрагивая ваши настройки.
+          Установите обновление, чтобы получить последние улучшения. Ваши настройки сохранятся.
         </p>
         <progress id="update-progress" class="update-progress" hidden></progress>
       </div>
       <button id="install-update" class="button button-update">
-        Обновить установщик
+        Обновить приложение
       </button>
     </section>
 
-    <section id="codex-update-panel" class="codex-update-panel" aria-live="polite" hidden>
-      <div>
-        <div class="eyebrow">Последний безопасный шаг</div>
-        <h2 id="codex-update-title">Новая версия плагина готова</h2>
-        <p id="codex-update-message">
-          Подтвердите обновление на открывшейся карточке Codex, затем начните новый чат.
-        </p>
-      </div>
-      <button id="finish-update" class="button button-dark">
-        Открыть Codex
-      </button>
-    </section>
-
-    <section class="status-card" aria-live="polite">
-      <div class="status-topline">
-        <span id="status-dot" class="status-dot is-loading"></span>
+    <section class="product-card" aria-labelledby="codex-heading" aria-live="polite">
+      <div class="card-heading">
+        <div class="product-icon codex-icon" aria-hidden="true">C</div>
         <div>
-          <div class="eyebrow">Состояние</div>
-          <h2 id="status-title">Проверяем файлы…</h2>
+          <div class="eyebrow">Codex</div>
+          <h2 id="codex-heading">Установка плагина в Codex</h2>
+          <p>Установите LidFly без терминала, затем подтвердите установку в Codex.</p>
         </div>
       </div>
-      <p id="status-message" class="status-message">Это займёт несколько секунд.</p>
+
+      <div class="status-summary">
+        <span id="status-dot" class="status-dot is-loading"></span>
+        <div>
+          <h3 id="status-title">Проверяем установку…</h3>
+          <p id="status-message">Это займёт несколько секунд.</p>
+        </div>
+      </div>
+
+      <section id="plugin-update-panel" class="plugin-update-panel" aria-live="polite" hidden>
+        <div class="update-symbol" aria-hidden="true">↓</div>
+        <div class="update-copy">
+          <div class="eyebrow">Обновление плагина для Codex</div>
+          <h3 id="plugin-update-title">Доступна новая версия плагина</h3>
+          <p id="plugin-update-message">Обновление займёт несколько секунд.</p>
+          <progress id="plugin-update-progress" class="update-progress" hidden></progress>
+        </div>
+        <button id="install-plugin-update" class="button button-light">
+          Обновить плагин
+        </button>
+      </section>
+
+      <section id="codex-update-panel" class="codex-update-panel" aria-live="polite" hidden>
+        <div>
+          <div class="eyebrow">Остался один шаг</div>
+          <h3 id="codex-update-title">Новая версия плагина готова</h3>
+          <p id="codex-update-message">
+            Подтвердите обновление в Codex, затем начните новый чат.
+          </p>
+        </div>
+        <button id="finish-update" class="button button-dark">
+          Открыть Codex
+        </button>
+      </section>
+
       <div id="notice" class="notice" hidden></div>
       <div id="details" class="details" hidden></div>
       <div class="primary-actions">
-        <button id="prepare" class="button button-primary">Подготовить плагин</button>
-        <button id="open-codex" class="button button-dark" disabled>Открыть в Codex</button>
+        <button id="prepare" class="button button-primary">Начать установку</button>
+        <button id="open-codex" class="button button-dark" disabled>Продолжить в Codex</button>
         <button id="repair" class="button button-warning" hidden>Восстановить</button>
       </div>
     </section>
 
-    <section class="status-card claude-card" aria-labelledby="claude-title" aria-live="polite">
-      <div class="status-topline">
-        <span id="claude-dot" class="status-dot is-loading"></span>
+    <section class="product-card" aria-labelledby="claude-heading" aria-live="polite">
+      <div class="card-heading">
+        <div class="product-icon claude-icon" aria-hidden="true">A</div>
         <div>
-          <div class="eyebrow">Дополнительно · Claude Desktop (Cowork)</div>
-          <h2 id="claude-title">Проверяем папку LidFly…</h2>
+          <div class="eyebrow">Claude Desktop · Cowork</div>
+          <h2 id="claude-heading">Установка для Claude Desktop</h2>
+          <p>Выполните три шага по порядку. Приложение подскажет, что нажимать.</p>
         </div>
       </div>
-      <p id="claude-message" class="status-message">
-        Установщик создаст рабочую папку с инструкциями и скиллами LidFly для Claude Cowork
-        и будет обновлять её вместе с плагином.
-      </p>
-      <div id="claude-folder" class="claude-folder" hidden>
-        <p class="claude-folder-path"><b>Папка на диске:</b> <code id="claude-folder-path"></code></p>
-        <p>
-          Папка остаётся на этом компьютере: в ней ваши рабочие материалы и служебные файлы LidFly.
-          Не удаляйте и не переносите её вручную — установщик обновляет только свои файлы,
-          ваши документы не изменяются.
-        </p>
-      </div>
-      <div class="claude-steps">
-        <div class="claude-step">
-          <div class="eyebrow">Шаг 1 · Подключите MCP</div>
-          <p>В Claude Desktop: Settings → Connectors → «Add custom connector», вставьте адрес и войдите в LidFly по email.</p>
-          <div class="mcp-row">
-            <code id="claude-mcp-url">https://lidfly.ru/mcp/v3</code>
-            <button id="copy-mcp" class="button">Скопировать</button>
+
+      <ol class="setup-steps">
+        <li class="setup-step">
+          <span class="step-number">1</span>
+          <div class="step-content">
+            <h3>Установите папку со скиллами на диск</h3>
+            <div class="step-status">
+              <span id="claude-dot" class="status-dot is-loading"></span>
+              <div>
+                <strong id="claude-title">Проверяем папку LidFly…</strong>
+                <p id="claude-message">Это займёт несколько секунд.</p>
+              </div>
+            </div>
+            <div id="claude-folder" class="folder-path" hidden>
+              Папка: <code id="claude-folder-path"></code>
+            </div>
+            <div class="step-actions">
+              <button id="claude-prepare" class="button button-primary">Установить папку</button>
+              <button id="claude-repair" class="button button-warning" hidden>Восстановить папку</button>
+            </div>
           </div>
-        </div>
-        <div class="claude-step">
-          <div class="eyebrow">Шаг 2 · Добавьте папку как проект</div>
-          <p>Создайте папку кнопкой ниже, затем в Claude Cowork: Projects → «+» → «Use existing folder» → выберите папку LidFly. Кнопка «Открыть в Claude» делает то же одним щелчком.</p>
-        </div>
-      </div>
+        </li>
+        <li class="setup-step">
+          <span class="step-number">2</span>
+          <div class="step-content">
+            <h3>Подключите MCP в Claude Desktop</h3>
+            <p>Откройте Settings → Connectors → «Add custom connector», вставьте адрес и войдите в LidFly по email.</p>
+            <div class="mcp-row">
+              <code id="claude-mcp-url">https://lidfly.ru/mcp/v3</code>
+              <button id="copy-mcp" class="button button-secondary">Скопировать адрес</button>
+            </div>
+          </div>
+        </li>
+        <li class="setup-step">
+          <span class="step-number">3</span>
+          <div class="step-content">
+            <h3>Добавьте папку LidFly как проект</h3>
+            <p>Нажмите кнопку ниже. В Claude подтвердите открытие папки LidFly в Cowork.</p>
+            <div class="step-actions">
+              <button id="claude-open" class="button button-dark" disabled>Открыть в Claude</button>
+            </div>
+          </div>
+        </li>
+      </ol>
+
       <div id="claude-notice" class="notice" hidden></div>
-      <div id="claude-details" class="details" hidden></div>
-      <div class="primary-actions">
-        <button id="claude-prepare" class="button button-primary">Создать папку LidFly</button>
-        <button id="claude-open" class="button button-dark" disabled>Открыть в Claude</button>
-        <button id="claude-repair" class="button button-warning" hidden>Восстановить папку</button>
+      <div class="secondary-actions">
         <button id="claude-remove" class="button button-ghost" disabled>Удалить файлы LidFly</button>
       </div>
       <p class="claude-fineprint">
-        Нужен план Claude Pro или выше. Cowork и коннектор подтверждаются внутри Claude —
-        установщик не меняет настройки Claude Desktop.
+        Папка LidFly остаётся на компьютере и нужна для работы — не удаляйте и не переносите её.
+        Приложение меняет только служебные файлы LidFly, а ваши документы сохраняет.
+        Для Cowork нужен план Claude Pro или выше. Подключение подтверждается внутри Claude Desktop.
       </p>
     </section>
 
@@ -165,7 +179,7 @@ app.innerHTML = `
     </section>
 
     <footer>
-      Установщик не меняет конфигурацию или cache Codex и не получает данные вашего аккаунта.
+      Приложение не получает данные вашего аккаунта и не меняет настройки Codex или Claude Desktop.
       <a href="https://lidfly.ru/privacy" target="_blank" rel="noreferrer">Конфиденциальность</a>
     </footer>
   </main>
@@ -207,7 +221,6 @@ const elements = {
   claudeFolderPath: required("claude-folder-path"),
   claudeMcpUrl: required("claude-mcp-url"),
   claudeNotice: required("claude-notice"),
-  claudeDetails: required("claude-details"),
   claudePrepare: requiredButton("claude-prepare"),
   claudeOpen: requiredButton("claude-open"),
   claudeRepair: requiredButton("claude-repair"),
@@ -317,15 +330,15 @@ function renderPluginContentStatus(status: PluginContentUpdateStatus): void {
   elements.pluginUpdateProgress.hidden = true;
   elements.pluginUpdateTitle.textContent =
     status.state === "requires_installer_update"
-      ? `Плагин ${release.pluginVersion} требует новый установщик`
-      : `Доступен плагин ${release.pluginVersion}`;
+      ? "Сначала обновите приложение"
+      : `Доступна версия ${release.pluginVersion}`;
   elements.pluginUpdateMessage.textContent =
     status.state === "requires_installer_update"
-      ? `Сначала обновите приложение до ${release.minInstallerVersion} или новее. Текущая установка продолжит работать.`
-      : "Скачаем подписанный bundle, проверим файлы и откроем Codex для штатного подтверждения.";
+      ? `Для новой версии плагина нужно приложение ${release.minInstallerVersion} или новее. Текущая версия продолжит работать.`
+      : "Установим новые скиллы LidFly. После этого останется подтвердить обновление в Codex.";
   elements.installPluginUpdate.textContent =
     status.state === "requires_installer_update"
-      ? "Сначала обновить установщик"
+      ? "Сначала обновите приложение"
       : `Обновить плагин до ${release.pluginVersion}`;
   elements.installPluginUpdate.disabled = busy || status.state !== "available";
 }
@@ -335,10 +348,10 @@ function showAvailableUpdate(update: Update): void {
   elements.updatePanel.classList.remove("is-downloading");
   elements.updateProgress.hidden = true;
   elements.updateProgress.removeAttribute("value");
-  elements.updateTitle.textContent = `Доступна версия ${update.version}`;
+  elements.updateTitle.textContent = `Вышла новая версия ${update.version}`;
   elements.updateMessage.textContent =
     update.body?.trim() ||
-    "Обновим установщик и официальный пакет плагина. После перезапуска откроется Codex для штатного подтверждения.";
+    "Обновите LidFly Plugin Lapki, чтобы получить последние улучшения. Ваши настройки и подключения сохранятся.";
   elements.installUpdate.textContent = `Обновить до ${update.version}`;
   const label = elements.update.querySelector("b");
   if (label) label.textContent = `Установить ${update.version}`;
@@ -426,28 +439,28 @@ function renderStatus(status: InstallerStatus): void {
     readonly [string, string, string]
   > = {
     not_prepared: [
-      "Плагин ещё не подготовлен",
-      "Нажмите «Подготовить плагин». Codex CLI не потребуется.",
+      "Плагин ещё не установлен",
+      "Нажмите «Начать установку». Терминал и ручная настройка не понадобятся.",
       "idle",
     ],
     ready_for_codex: [
-      "Готов к установке в Codex",
-      "Файлы проверены. Откройте Codex и подтвердите установку.",
+      "Осталось подтвердить установку в Codex",
+      "Нажмите «Продолжить в Codex», затем подтвердите установку на карточке LidFly.",
       "success",
     ],
     installed_bundle: [
-      `Установлен bundle версии ${status.installedPluginVersion ?? status.embeddedPluginVersion}`,
-      "Файлы прошли проверку. Можно открыть карточку LidFly в Codex.",
+      `Файлы плагина версии ${status.installedPluginVersion ?? status.embeddedPluginVersion} готовы`,
+      "Откройте Codex и подтвердите установку или обновление LidFly.",
       "success",
     ],
     modified_files: [
-      "Найдены изменённые файлы",
-      "Установщик ничего не перезаписал. Проверьте список и запустите восстановление.",
+      "Нужна проверка файлов",
+      "Некоторые файлы отличаются от официальной версии. Нажмите «Восстановить», чтобы продолжить безопасно.",
       "warning",
     ],
     incomplete_state: [
-      "Подготовка не завершена",
-      "Предыдущая консистентная версия сохранена. Запустите проверку или восстановление.",
+      "Установка не завершена",
+      "Предыдущая рабочая версия сохранена. Нажмите «Восстановить», чтобы продолжить.",
       "warning",
     ],
   };
@@ -458,8 +471,8 @@ function renderStatus(status: InstallerStatus): void {
   elements.openCodex.disabled = busy || !status.canOpenCodex;
   elements.prepare.hidden = status.canOpenCodex && !status.updateRequired;
   elements.prepare.textContent = status.updateRequired
-    ? "Обновить plugin bundle"
-    : "Подготовить плагин";
+    ? "Обновить файлы плагина"
+    : "Начать установку";
   elements.repair.hidden = !status.needsRepair;
   elements.remove.disabled = busy || status.phase === "not_prepared";
   renderDetails(status);
@@ -484,21 +497,6 @@ function clearClaudeNotice(): void {
   elements.claudeNotice.textContent = "";
 }
 
-function renderClaudeDetails(status: InstallerStatus): void {
-  const noteworthy = status.files.filter(
-    (file) => file.condition !== "unchanged",
-  );
-  const rows = noteworthy.map(
-    (file) =>
-      `<li><code>${escapeHtml(file.path)}</code> — ${conditionLabel(file.condition)}</li>`,
-  );
-  elements.claudeDetails.hidden = rows.length === 0;
-  elements.claudeDetails.innerHTML =
-    rows.length > 0
-      ? `<strong>Служебные файлы LidFly</strong><ul>${rows.join("")}</ul>`
-      : "";
-}
-
 function renderClaudeStatus(payload: ClaudeProjectStatusPayload): void {
   claudeStatus = payload;
   const status = payload.status;
@@ -511,28 +509,28 @@ function renderClaudeStatus(payload: ClaudeProjectStatusPayload): void {
     readonly [string, string, string]
   > = {
     not_prepared: [
-      "Папка LidFly ещё не создана",
-      "Нажмите «Создать папку LidFly» — появится готовый проект для Claude Cowork со скиллами и инструкциями.",
+      "Папка ещё не установлена",
+      "Нажмите «Установить папку». Ваши скиллы и инструкции LidFly сохранятся на этом компьютере.",
       "idle",
     ],
     ready_for_codex: [
-      "Папка LidFly готова",
-      "Откройте её в Claude или добавьте как проект Cowork через «Use existing folder».",
+      "Папка установлена",
+      "Готово. Переходите к шагу 2 — подключению MCP.",
       "success",
     ],
     installed_bundle: [
-      "Папка LidFly синхронизирована",
-      "Служебные файлы совпадают с официальной версией. Ваши документы в папке не изменяются.",
+      "Папка установлена и обновлена",
+      "Готово. Переходите к шагу 2 — подключению MCP.",
       "success",
     ],
     modified_files: [
-      "Служебные файлы LidFly изменены",
-      "Установщик ничего не перезаписал. «Восстановить папку» вернёт официальные файлы, сохранив backup; ваши документы не пострадают.",
+      "Папку нужно восстановить",
+      "Нажмите «Восстановить папку». Ваши документы сохранятся, изменённые служебные файлы попадут в резервную копию.",
       "warning",
     ],
     incomplete_state: [
-      "Папка подготовлена не полностью",
-      "Запустите восстановление — установщик безопасно допишет недостающие служебные файлы.",
+      "Установка папки не завершена",
+      "Нажмите «Восстановить папку», чтобы безопасно завершить установку.",
       "warning",
     ],
   };
@@ -544,10 +542,9 @@ function renderClaudeStatus(payload: ClaudeProjectStatusPayload): void {
   elements.claudePrepare.hidden = status.canOpenCodex && !status.updateRequired;
   elements.claudePrepare.textContent = status.updateRequired
     ? "Обновить папку LidFly"
-    : "Создать папку LidFly";
+    : "Установить папку";
   elements.claudeRepair.hidden = !status.needsRepair;
   elements.claudeRemove.disabled = busy || status.phase === "not_prepared";
-  renderClaudeDetails(status);
 }
 
 async function refreshClaudeStatus(): Promise<void> {
@@ -617,7 +614,7 @@ elements.prepare.addEventListener("click", () => {
     let allowDowngrade = false;
     if (currentStatus?.downgradeDetected) {
       allowDowngrade = window.confirm(
-        "На компьютере подготовлена более новая версия. Установить более ранний bundle и сохранить backup?",
+        "На компьютере уже есть более новая версия плагина. Установить более раннюю и сохранить резервную копию?",
       );
       if (!allowDowngrade) throw new Error("Понижение версии отменено.");
     }
@@ -631,7 +628,7 @@ elements.prepare.addEventListener("click", () => {
 elements.repair.addEventListener("click", () => {
   if (
     !window.confirm(
-      "Изменённые файлы будут сохранены в backup и заменены официальными. Продолжить?",
+      "Изменённые файлы будут сохранены в резервную копию и заменены официальными. Продолжить?",
     )
   )
     return;
@@ -687,7 +684,7 @@ elements.claudePrepare.addEventListener("click", () => {
       let allowDowngrade = false;
       if (claudeStatus?.status.downgradeDetected) {
         allowDowngrade = window.confirm(
-          "В папке подготовлена более новая версия файлов LidFly. Установить более раннюю и сохранить backup?",
+          "В папке уже есть более новая версия файлов LidFly. Установить более раннюю и сохранить резервную копию?",
         );
         if (!allowDowngrade) throw new Error("Понижение версии отменено.");
       }
@@ -698,14 +695,14 @@ elements.claudePrepare.addEventListener("click", () => {
     },
     isUpdate
       ? "Папка LidFly обновлена до официальной версии. Ваши документы не изменялись."
-      : "Папка LidFly создана. Подключите MCP-коннектор (шаг 1) и добавьте папку как проект Cowork (шаг 2).",
+      : "Папка LidFly установлена. Теперь переходите к шагу 2 — подключите MCP в Claude Desktop.",
   );
 });
 
 elements.claudeRepair.addEventListener("click", () => {
   if (
     !window.confirm(
-      "Изменённые служебные файлы LidFly будут сохранены в backup и заменены официальными. Ваши собственные документы в папке не изменятся. Продолжить?",
+      "Изменённые служебные файлы LidFly будут сохранены в резервную копию и заменены официальными. Ваши собственные документы в папке не изменятся. Продолжить?",
     )
   )
     return;
@@ -738,7 +735,7 @@ elements.claudeOpen.addEventListener("click", () => {
 elements.claudeRemove.addEventListener("click", () => {
   if (
     !window.confirm(
-      "Удалить из папки LidFly только неизменённые служебные файлы установщика? Ваши собственные документы и сама папка останутся на месте.",
+      "Удалить из папки LidFly только неизменённые служебные файлы приложения? Ваши собственные документы и сама папка останутся на месте.",
     )
   )
     return;
@@ -888,7 +885,7 @@ async function checkPluginContentUpdates(
         );
       } else if (status.state === "requires_installer_update") {
         showNotice(
-          "Для новой версии плагина сначала требуется обновление установщика.",
+          "Для новой версии плагина сначала обновите приложение.",
           "warning",
         );
       } else if (!availableUpdate) {
@@ -920,7 +917,7 @@ async function installPluginContentUpdate(): Promise<void> {
   elements.pluginUpdateProgress.hidden = false;
   elements.pluginUpdateProgress.removeAttribute("value");
   elements.pluginUpdateMessage.textContent =
-    "Скачиваем bundle и проверяем подпись, SHA-256 и структуру файлов…";
+    "Скачиваем обновление и проверяем его безопасность…";
   try {
     let outcome: PluginContentInstallOutcome;
     try {
@@ -933,7 +930,7 @@ async function installPluginContentUpdate(): Promise<void> {
       if (
         clientError.code !== "modified_files_confirmation_required" ||
         !window.confirm(
-          "Локальные managed-файлы изменены. Сохранить backup и заменить их подписанной версией?",
+          "Некоторые файлы плагина изменены. Сохранить резервную копию и заменить их официальной версией?",
         )
       ) {
         throw error;
@@ -959,12 +956,12 @@ async function installPluginContentUpdate(): Promise<void> {
       );
     } else if (outcome.claudeSyncError) {
       showClaudeNotice(
-        `Папка LidFly не обновлена автоматически: ${outcome.claudeSyncError.message} Нажмите «Восстановить папку», чтобы обновить её с сохранением backup.`,
+        `Папка LidFly не обновлена автоматически: ${outcome.claudeSyncError.message} Нажмите «Восстановить папку», чтобы обновить её с сохранением резервной копии.`,
         "warning",
       );
     }
     const backup = outcome.operation.backupDirectory
-      ? ` Backup: ${outcome.operation.backupDirectory}.`
+      ? ` Резервная копия: ${outcome.operation.backupDirectory}.`
       : "";
     showNotice(
       `Плагин ${outcome.release.pluginVersion} подготовлен.${outcome.codexOpened ? " Подтвердите обновление в Codex" : " Откройте Codex вручную и подтвердите обновление"}, затем полностью перезапустите Codex.${backup}`,
@@ -1013,14 +1010,12 @@ async function installAvailableUpdate(update: Update): Promise<void> {
       } else if (event.event === "Finished") {
         if (total) elements.updateProgress.value = total;
         elements.updateMessage.textContent =
-          "Обновление проверено. Перезапускаем приложение и готовим новую версию плагина.";
+          "Обновление установлено. Сейчас приложение перезапустится.";
         elements.updateCaption.textContent =
           "Обновление проверено и установлено";
       }
     });
-    showNotice(
-      "Обновление установлено. Приложение перезапустится и синхронизирует plugin bundle той же версии.",
-    );
+    showNotice("Обновление установлено. Сейчас приложение перезапустится.");
     await relaunch();
   } catch (error) {
     const mapped = mapUpdaterError(error);

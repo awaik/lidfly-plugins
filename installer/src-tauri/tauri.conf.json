@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "LidFly Codex Plugin Installer",
+  "productName": "LidFly Plugin Lapki",
   "mainBinaryName": "lidfly-codex-plugin-installer",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "identifier": "ru.lidfly.codex-plugin-installer",
   "build": {
     "beforeDevCommand": "npm run dev:frontend",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "LidFly Codex Plugin Installer",
+        "title": "LidFly Plugin Lapki",
         "width": 820,
         "height": 720,
         "minWidth": 680,

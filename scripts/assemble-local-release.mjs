@@ -38,13 +38,13 @@ const args = parseArgs(process.argv.slice(2));
 await mkdir(args.outputDir, { recursive: true, mode: 0o700 });
 
 const macosFiles = [
-  `LidFly Codex Plugin Installer_${args.version}_universal.dmg`,
-  `LidFly Codex Plugin Installer_${args.version}_universal.app.tar.gz`,
-  `LidFly Codex Plugin Installer_${args.version}_universal.app.tar.gz.sig`,
+  `LidFly Plugin Lapki_${args.version}_universal.dmg`,
+  `LidFly Plugin Lapki_${args.version}_universal.app.tar.gz`,
+  `LidFly Plugin Lapki_${args.version}_universal.app.tar.gz.sig`,
 ];
 const windowsFiles = [
-  `LidFly Codex Plugin Installer_${args.version}_x64-setup.exe`,
-  `LidFly Codex Plugin Installer_${args.version}_x64-setup.exe.sig`,
+  `LidFly Plugin Lapki_${args.version}_x64-setup.exe`,
+  `LidFly Plugin Lapki_${args.version}_x64-setup.exe.sig`,
 ];
 
 for (const [directory, files] of [

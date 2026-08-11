@@ -51,7 +51,7 @@ if (
 }
 if (
   tauriConfig.identifier !== "ru.lidfly.codex-plugin-installer" ||
-  tauriConfig.productName !== "LidFly Codex Plugin Installer"
+  tauriConfig.productName !== "LidFly Plugin Lapki"
 ) {
   throw new Error("Tauri productName or identifier changed unexpectedly");
 }

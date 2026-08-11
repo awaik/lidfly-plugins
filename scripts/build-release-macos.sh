@@ -35,10 +35,10 @@ RELEASE_TEMP_DIR="$(mktemp -d)"
 RELEASE_CONFIG="$RELEASE_TEMP_DIR/tauri-release.json"
 MACOS_BUNDLE_DIR="$INSTALLER_ROOT/src-tauri/target/universal-apple-darwin/release/bundle/macos"
 DMG_BUNDLE_DIR="$INSTALLER_ROOT/src-tauri/target/universal-apple-darwin/release/bundle/dmg"
-APP_NAME="LidFly Codex Plugin Installer.app"
+APP_NAME="LidFly Plugin Lapki.app"
 APP_PATH="$MACOS_BUNDLE_DIR/$APP_NAME"
-DMG_NAME="LidFly Codex Plugin Installer_${VERSION}_universal.dmg"
-UPDATER_NAME="LidFly Codex Plugin Installer_${VERSION}_universal.app.tar.gz"
+DMG_NAME="LidFly Plugin Lapki_${VERSION}_universal.dmg"
+UPDATER_NAME="LidFly Plugin Lapki_${VERSION}_universal.app.tar.gz"
 DMG_OUTPUT="$ARTIFACTS_DIR/$DMG_NAME"
 UPDATER_OUTPUT="$ARTIFACTS_DIR/$UPDATER_NAME"
 UPDATER_SIGNATURE_OUTPUT="$UPDATER_OUTPUT.sig"
@@ -82,7 +82,7 @@ node ../scripts/write-release-tauri-config.mjs "$RELEASE_CONFIG"
 # the final DMG below is rebuilt from the notarized and stapled app.
 npx tauri build --bundles app,dmg --target universal-apple-darwin --config "$RELEASE_CONFIG"
 
-APP_ZIP="$RELEASE_TEMP_DIR/LidFly Codex Plugin Installer.zip"
+APP_ZIP="$RELEASE_TEMP_DIR/LidFly Plugin Lapki.zip"
 ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
 xcrun notarytool submit "$APP_ZIP" \
   --keychain-profile "$NOTARYTOOL_PROFILE" \
@@ -100,7 +100,7 @@ DMG_SOURCE="$RELEASE_TEMP_DIR/dmg-source"
 mkdir -p "$DMG_SOURCE"
 ditto "$APP_PATH" "$DMG_SOURCE/$APP_NAME"
 "$DMG_BUNDLE_DIR/bundle_dmg.sh" \
-  --volname "LidFly Codex Plugin Installer" \
+  --volname "LidFly Plugin Lapki" \
   --volicon "$DMG_BUNDLE_DIR/icon.icns" \
   --window-size 660 400 \
   --icon-size 128 \

@@ -67,7 +67,7 @@ npm run ci:local
 
 ## Локальные ключи
 
-Updater keypair относится только к `LidFly Codex Plugin Installer`. Local release
+Updater keypair относится только к `LidFly Plugin Lapki`. Local release
 не читает GitHub secrets: private key и password не добавляются в Git, artifacts
 или shell history. Public key не является секретом, но обе платформы обязаны
 использовать один и тот же файл.
@@ -191,11 +191,11 @@ npm run release:windows:cross-local -- X.Y.Z /absolute/output/X.Y.Z/windows
 Для версии `X.Y.Z`:
 
 ```text
-LidFly Codex Plugin Installer_X.Y.Z_universal.dmg
-LidFly Codex Plugin Installer_X.Y.Z_universal.app.tar.gz
-LidFly Codex Plugin Installer_X.Y.Z_universal.app.tar.gz.sig
-LidFly Codex Plugin Installer_X.Y.Z_x64-setup.exe
-LidFly Codex Plugin Installer_X.Y.Z_x64-setup.exe.sig
+LidFly Plugin Lapki_X.Y.Z_universal.dmg
+LidFly Plugin Lapki_X.Y.Z_universal.app.tar.gz
+LidFly Plugin Lapki_X.Y.Z_universal.app.tar.gz.sig
+LidFly Plugin Lapki_X.Y.Z_x64-setup.exe
+LidFly Plugin Lapki_X.Y.Z_x64-setup.exe.sig
 ```
 
 ## Сборка общего handoff
@@ -235,6 +235,26 @@ hash, несовпадающий plugin bundle, platform evidence от друг�
 
 ## GitHub только выкладывает
 
+Перед первым релизом с новым `productName` (`1.4.0`) обязательна отдельная
+проверка обновления на реальной Windows x64:
+
+1. установить опубликованную `1.3.0` в режиме `currentUser`;
+2. поверх неё запустить собранную `1.4.0` и проверить новый каталог, ярлык и обе
+   записи в списке установленных приложений;
+3. удалить старую `LidFly Codex Plugin Installer` и убедиться, что новая
+   `LidFly Plugin Lapki`, локальный marketplace и папка `LidFly` продолжают
+   работать;
+4. зафиксировать фактический результат в GitHub Release notes. В notes также
+   нужно объяснить пользователям macOS, что после установки нового DMG следует
+   удалить старое приложение; обновление через Tauri updater сохраняет прежнее
+   имя `.app`.
+
+Без этой Windows-проверки `installer-v1.4.0` не публикуется.
+Черновик текста для этого релиза хранится в
+`docs/RELEASE-NOTES-INSTALLER-1.4.0.md`; после проверки Windows его нужно
+сверить с фактическим поведением и передать в `gh release create` через
+`--notes-file`.
+
 После отдельного разрешения готовые файлы загружаются напрямую через GitHub API.
 Это не запускает runner:
 
@@ -243,13 +263,13 @@ FINAL_DIR='/absolute/output/X.Y.Z/final'
 gh release create installer-vX.Y.Z \
   --repo awaik/lidfly-plugins \
   --verify-tag \
-  --title 'LidFly Codex Plugin Installer X.Y.Z' \
+  --title 'LidFly Plugin Lapki X.Y.Z' \
   --notes 'Release notes' \
-  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_universal.dmg" \
-  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_universal.app.tar.gz" \
-  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_universal.app.tar.gz.sig" \
-  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_x64-setup.exe" \
-  "$FINAL_DIR/LidFly Codex Plugin Installer_X.Y.Z_x64-setup.exe.sig" \
+  "$FINAL_DIR/LidFly Plugin Lapki_X.Y.Z_universal.dmg" \
+  "$FINAL_DIR/LidFly Plugin Lapki_X.Y.Z_universal.app.tar.gz" \
+  "$FINAL_DIR/LidFly Plugin Lapki_X.Y.Z_universal.app.tar.gz.sig" \
+  "$FINAL_DIR/LidFly Plugin Lapki_X.Y.Z_x64-setup.exe" \
+  "$FINAL_DIR/LidFly Plugin Lapki_X.Y.Z_x64-setup.exe.sig" \
   "$FINAL_DIR/SHA256SUMS.txt" \
   "$FINAL_DIR/plugin-bundle-files.json" \
   "$FINAL_DIR/release-handoff.json"

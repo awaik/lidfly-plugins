@@ -2,7 +2,7 @@
 
 ## Что делает приложение
 
-`LidFly Codex Plugin Installer` — отдельное Tauri 2 приложение. Оно сохраняет проверенную локальную копию marketplace в per-user `app_data_dir`, затем открывает карточку плагина через документированный `codex://` URI. Пользователь сам нажимает кнопку установки в Codex и проходит OAuth LidFly по email.
+`LidFly Plugin Lapki` — отдельное Tauri 2 приложение. Оно сохраняет проверенную локальную копию marketplace в per-user `app_data_dir`, затем открывает карточку плагина через документированный `codex://` URI. Пользователь сам нажимает кнопку установки в Codex и проходит OAuth LidFly по email.
 
 Вторая, необязательная цель — Claude Desktop (Cowork). Установщик создаёт пользовательскую папку `<home>/LidFly` со снапшотом клиентского шаблона `awaik/direct-mcp-ai-project` (CLAUDE.md, скиллы, инструкции), обновляет в ней только свои managed-файлы и открывает папку через документированный deep link `claude://cowork/new`. MCP-коннектор `https://lidfly.ru/mcp/v3` пользователь добавляет вручную в настройках Claude, там же проходит OAuth; проект Cowork он подключает сам через «Use existing folder».
 

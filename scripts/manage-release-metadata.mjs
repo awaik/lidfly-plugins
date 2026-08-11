@@ -7,6 +7,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
+import { APP_NAME } from "./lib/release-contract.mjs";
+
 const execFileAsync = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releasesDir = path.join(root, "releases");
@@ -15,6 +17,8 @@ const SEMVER = /^\d+\.\d+\.\d+$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const REPOSITORY = "https://github.com/awaik/lidfly-plugins";
+const LEGACY_APP_NAME = "LidFly Codex Plugin Installer";
+const LAST_LEGACY_APP_NAME_VERSION = "1.3.0";
 
 function usage() {
   return `Usage:
@@ -41,6 +45,17 @@ function exactKeys(value, keys, label) {
 
 function stableJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function compareSemver(left, right) {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] !== rightParts[index]) {
+      return leftParts[index] - rightParts[index];
+    }
+  }
+  return 0;
 }
 
 function releaseVersion(metadata) {
@@ -222,10 +237,14 @@ function validateIndependent(metadata) {
     ["manifestPath", "mcpUrl", "name", "version"],
     "embeddedPlugin",
   );
+  const installerVersion = metadata.installer.version;
+  assert(SEMVER.test(installerVersion), "invalid installer metadata");
+  const legacyNameAllowed =
+    compareSemver(installerVersion, LAST_LEGACY_APP_NAME_VERSION) <= 0;
   assert(
-    metadata.installer.name === "LidFly Codex Plugin Installer" &&
-      SEMVER.test(metadata.installer.version),
-    "invalid installer metadata",
+    metadata.installer.name === APP_NAME ||
+      (legacyNameAllowed && metadata.installer.name === LEGACY_APP_NAME),
+    `installer.name must be ${APP_NAME}`,
   );
   assert(
     metadata.embeddedPlugin.name === "lidfly" &&

@@ -1,6 +1,6 @@
 [package]
 name = "lidfly-codex-plugin-installer"
-version = "1.3.0"
+version = "1.4.0"
 description = "LidFly marketplace installer for Codex"
 authors = ["LidFly"]
 license = "MIT"
