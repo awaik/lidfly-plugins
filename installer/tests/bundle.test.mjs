@@ -50,6 +50,12 @@ const tauriCli = path.join(
 const releaseVersion = JSON.parse(
   await readFile(path.join(repositoryRoot, "installer/package.json"), "utf8"),
 ).version;
+const embeddedPluginVersion = JSON.parse(
+  await readFile(
+    path.join(repositoryRoot, "plugins/lidfly/.codex-plugin/plugin.json"),
+    "utf8",
+  ),
+).version;
 const mismatchedVersion = "9.9.9";
 
 async function fakeReleaseDirectory() {
@@ -118,13 +124,19 @@ describe("plugin bundle contract", () => {
     );
     expect(first.metadata.files).toEqual(second.metadata.files);
     expect(BUNDLE_PATHS).toContain(GENERATED_SKILLS_MANIFEST_PATH);
+    const generatedSkills = JSON.parse(
+      await readFile(
+        path.join(repositoryRoot, GENERATED_SKILLS_MANIFEST_PATH),
+        "utf8",
+      ),
+    );
     expect(
       BUNDLE_PATHS.filter(
         (relativePath) =>
           relativePath.startsWith("plugins/lidfly/skills/") &&
           relativePath.endsWith("/SKILL.md"),
       ),
-    ).toHaveLength(21);
+    ).toHaveLength(Object.keys(generatedSkills.skills).length);
     expect([...BUNDLE_PATHS].sort()).toEqual([...BUNDLE_PATHS]);
   });
 
@@ -562,7 +574,7 @@ describe("release artifact contract", () => {
       }),
     ).resolves.toMatchObject({
       version: mismatchedVersion,
-      embeddedPluginVersion: "1.1.1",
+      embeddedPluginVersion,
     });
   });
 });
