@@ -1,7 +1,7 @@
 {
   "name": "lidfly",
   "version": "1.1.2",
-  "description": "Работа с рекламой, аналитикой, сайтами и контентом LidFly через защищённый MCP-сервер и встроенные скиллы.",
+  "description": "LidFly MCP: Яндекс Директ, Яндекс Метрика (Metrika), Яндекс Вебмастер (Webmaster), Wordstat, VK Ads, Авито и Авито Реклама; сайты, базы знаний, Commerce, Пространства, изображения и распознавание аудио.",
   "author": {
     "name": "LidFly",
     "email": "info@lidfly.ru",
@@ -15,14 +15,20 @@
     "mcp",
     "advertising",
     "analytics",
-    "productivity"
+    "productivity",
+    "yandex-metrika",
+    "yandex-webmaster",
+    "wordstat",
+    "seo",
+    "avito",
+    "vk-ads"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "LidFly",
-    "shortDescription": "Реклама, аналитика и сайты через LidFly.",
-    "longDescription": "Подключает Codex к LidFly по HTTPS и добавляет специализированные скиллы. После установки войдите по email, чтобы работать с рекламой, аналитикой, сайтами и контентом в новом чате.",
+    "shortDescription": "Метрика, Вебмастер, реклама и сайты.",
+    "longDescription": "LidFly MCP: Яндекс Директ, Яндекс Метрика (Metrika), Яндекс Вебмастер (Webmaster), Wordstat, VK Ads, Авито и Авито Реклама; сайты, базы знаний, Commerce, Пространства, изображения и распознавание аудио. Ищите инструменты через search_tools. Доступ к данным зависит от подключений и разрешений.",
     "developerName": "LidFly",
     "category": "Data & Analytics",
     "capabilities": [
@@ -37,8 +43,8 @@
     "logo": "./assets/logo.svg",
     "logoDark": "./assets/logo-dark.svg",
     "defaultPrompt": [
-      "Проверь статус моей подписки LidFly",
-      "Покажи доступные аккаунты и проекты",
+      "Покажи посещаемость моего сайта",
+      "Проверь индексацию моего сайта",
       "Помоги проанализировать рекламу"
     ],
     "screenshots": []
