@@ -30,6 +30,14 @@ Before any campaign or ad-group write, read [VK goal mode and write safety](refe
 
 The compact legacy provider projection is [methodology](references/methodology.md).
 
+## Analytics
+
+Before evaluating statistics, CPA, reach, budget distribution, missing impressions or a reach forecast, read [VK Ads analytics](references/analytics.md). Tool descriptions carry no evaluation thresholds; judgment comes from that reference and the client's goals in project memory.
+
+## Phrase Expansion
+
+Offer `search_phrase_vectorization` only when the user wants broader reach from contextual phrases; do not enable it as a default optimization. Explain the audience change before confirmation, use a phrase segment in `targetings.segments`, and reread the field after creation. Manual user-filter does not support this setting. An unconfirmed write must not be repeated. Source: [VK AdGroup API](https://ads.vk.ru/doc/api/object/AdGroup), local documentation checked 2026-09-26; live reads on the own account accepted `fields` but omitted this field, so absence is not proof of `false`.
+
 ## Creative And Text
 
 - Validate package/banner pattern before creating banners.
@@ -44,3 +52,5 @@ Save decisions, campaign snapshots, analytics summaries, and follow-up scheduled
 ## Google Export
 
 When the user asks to export a VK Ads report to Google Sheets or Google Docs, keep this skill for account/campaign scope and report reads, then hand the verified Google write and reread to `$export-ad-reports`.
+
+The export handoff applies only when this host exposes the skill and a Google write connector. If either is unavailable, state the exact missing capability and return the requested report as a draft; do not claim a saved Google file or silently switch to Workspace.
