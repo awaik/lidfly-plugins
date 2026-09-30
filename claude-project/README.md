@@ -1,5 +1,25 @@
 # direct-mcp AI Project
 
+## Возможности LidFly и поиск инструментов
+
+LidFly MCP объединяет Яндекс Директ, Яндекс Метрику (Metrika), Яндекс Вебмастер
+(Webmaster), Wordstat, VK Ads, обычное Авито и Авито Рекламу; сайты, базы знаний,
+Commerce; Пространства с памятью, документами и задачами; изображения и
+распознавание аудио.
+
+Для задачи о посещаемости, целях или конверсиях сначала ищи `search_tools({ query: "metrika" })`;
+для SEO, индексации и запросов сайта — `query: "webmaster"`; для спроса и частотности —
+`query: "wordstat"`. Это относится и к запросам без названия LidFly или сервиса.
+
+Отсутствие профильного инструмента в `tools/list` не означает отсутствие возможности:
+сначала выполни поиск, получи `get_tool_schema`, затем используй нужный read/write wrapper.
+Если поиск пуст, попробуй короткое название сервиса и поиск без фильтров; усечённый
+список не является полным каталогом. Наличие инструмента не доказывает доступ к
+конкретному счётчику или сайту: scope и разрешения проверяются отдельно через MCP.
+Метрика начинает с `metrika_get_counters`, Вебмастер — с `webmaster_get_hosts`.
+Не подставляй для них `client_login` Директа.
+
+
 Клиентский шаблон для подключения AI-агентов к [LidFly MCP](https://lidfly.ru/): Яндекс Директ, Метрика, Яндекс Вебмастер, VK Ads, Авито Реклама, LidFly sites/Commerce и Пространства через один endpoint.
 
 Шаблон нужен, чтобы внешний AI-клиент работал не как "чат с токеном", а как аккуратный оператор: сначала находит scope, читает состояние, показывает план, затем пишет только через подтверждённый write-вызов.
@@ -22,6 +42,7 @@ call_write_tool
 get_methodology
 get_provider_context
 resolve_campaign_scope
+get_write_operation_status
 subscription_status
 ```
 
@@ -44,7 +65,7 @@ AI ищет нужный доменный инструмент через `searc
 Проверь кампанию <название>, найди scope сам, ничего не меняй без отдельного плана.
 ```
 
-OAuth в браузере - основной путь для современных клиентов. API-key/Bearer header оставлен только как legacy/manual fallback для клиентов без remote MCP OAuth.
+OAuth в браузере — рекомендуемый способ подключения; готовые конфиги используют его по умолчанию. Если предпочитаете API-ключ или клиент не поддерживает OAuth, используйте [отдельную инструкцию подключения через ключ](docs/setup-api-key.md): секрет хранится в `LIDFLY_TOKEN`, а конфиг ссылается на переменную окружения.
 
 ## Поддерживаемые Клиенты
 
@@ -59,6 +80,7 @@ OAuth в браузере - основной путь для современн�
 | Windsurf | [docs/setup-windsurf.md](docs/setup-windsurf.md) |
 | Cline | [docs/setup-cline.md](docs/setup-cline.md) |
 | Gemini CLI | [docs/setup-gemini-cli.md](docs/setup-gemini-cli.md) |
+| OpenCode | [docs/setup-opencode.md](docs/setup-opencode.md) |
 | OpenClaw | [docs/setup-openclaw.md](docs/setup-openclaw.md) |
 
 Публичные snippets подключения в продукте генерируются из `public/js/guides.js` основного репозитория LidFly. Этот AI-project - клиентский шаблон; если snippets разошлись, синхронизируйте их с `public/js/guides.js`.
@@ -110,13 +132,15 @@ OAuth в браузере - основной путь для современн�
 
 ## Skills
 
-Канонический источник skills лежит в `skills-source/`. Клиентские копии в `.agents/skills` (актуальный Codex), `.codex/skills` (legacy compatibility), `.claude/skills` и `.openclaw/skills` генерируются командой:
+Канонический авторский источник skills находится в основном репозитории LidFly `direct-mcp/skills-source`. Этот репозиторий хранит только проверенную клиентскую проекцию подписанного immutable release: `skills-source/.lidfly-release-lock.json` фиксирует release и digests. Не редактируйте `skills-source/` вручную.
+
+Клиентские копии в `.agents/skills` (актуальный Codex), `.codex/skills` (legacy compatibility), `.claude/skills` и `.openclaw/skills` генерируются командой:
 
 ```bash
 node scripts/sync-skills.mjs
 ```
 
-Правьте только `skills-source/<skill>/`, затем запускайте sync. Каждый skill хранит основной файл `SKILL.md` и Codex metadata в `agents/openai.yaml`. Генератор работает недеструктивно, отказывается перезаписывать расходящиеся клиентские копии и удаляет только известные legacy-файлы собственного старого формата.
+Обновление `skills-source/` выполняет `scripts/pull-lidfly-skills.mjs`: он проверяет pinned Ed25519 key, подписи `latest.json`/manifest, registry и file digests, а затем меняет только файлы, совпадающие с предыдущим lock. После pull запускается обычный sync. Генераторы отказываются перезаписывать ручную дивергенцию.
 
 Ключевые skills:
 
@@ -131,6 +155,8 @@ node scripts/sync-skills.mjs
 | `avito-ads` | Авито Реклама read/write workflows |
 | `yandex-webmaster` | Yandex Webmaster SEO audits and safe write actions |
 | `lidfly-site-commerce` | LidFly sites, SEO/social metadata, Schema.org, assets, leads, Commerce, RSS and product feeds |
+| `lidfly-knowledge-maintainer` | Client-only ingest, query-to-wiki, provenance, changesets and lint for LidFly knowledge bases |
+| `restaurant-yandex` | Меню ресторана, фид Яндекс Бизнеса и аналитика действий в Картах |
 | `article-writer`, `video-article-writer`, `article-reviser`, `human-editorial-polish` | Контент, SEO/GEO, редактура без обхода детекторов |
 
 ## Настройка Под Бизнес
@@ -164,6 +190,7 @@ node scripts/sync-skills.mjs
 ├── .windsurf/mcp.json
 ├── .cline/mcp_settings.json
 ├── .gemini/settings.json
+├── opencode.json
 └── .openclaw/openclaw.example.json
 ```
 

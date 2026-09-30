@@ -6,6 +6,25 @@
 
 Публичные setup snippets в продукте поддерживаются в основном репозитории LidFly в `public/js/guides.js`. Если локальная инструкция клиента и `public/js/guides.js` расходятся, актуальным считается `public/js/guides.js`, а этот шаблон нужно синхронизировать.
 
+## Возможности LidFly и поиск инструментов
+
+LidFly MCP объединяет Яндекс Директ, Яндекс Метрику (Metrika), Яндекс Вебмастер
+(Webmaster), Wordstat, VK Ads, обычное Авито и Авито Рекламу; сайты, базы знаний,
+Commerce; Пространства с памятью, документами и задачами; изображения и
+распознавание аудио.
+
+Для задачи о посещаемости, целях или конверсиях сначала ищи `search_tools({ query: "metrika" })`;
+для SEO, индексации и запросов сайта — `query: "webmaster"`; для спроса и частотности —
+`query: "wordstat"`. Это относится и к запросам без названия LidFly или сервиса.
+
+Отсутствие профильного инструмента в `tools/list` не означает отсутствие возможности:
+сначала выполни поиск, получи `get_tool_schema`, затем используй нужный read/write wrapper.
+Если поиск пуст, попробуй короткое название сервиса и поиск без фильтров; усечённый
+список не является полным каталогом. Наличие инструмента не доказывает доступ к
+конкретному счётчику или сайту: scope и разрешения проверяются отдельно через MCP.
+Метрика начинает с `metrika_get_counters`, Вебмастер — с `webmaster_get_hosts`.
+Не подставляй для них `client_login` Директа.
+
 ## Unified MCP v3
 
 Основной endpoint:
@@ -14,7 +33,7 @@
 https://lidfly.ru/mcp/v3
 ```
 
-Транспорт: Streamable HTTP. Для новых клиентов выбирай `http`, `streamable-http` или native remote MCP OAuth, если клиент это поддерживает. Старый `mcp-remote` и API-key headers оставляй только как legacy/manual fallback для клиентов без OAuth.
+Транспорт: Streamable HTTP. Для новых клиентов выбирай `http`, `streamable-http` или native remote MCP OAuth, если клиент это поддерживает. OAuth — способ по умолчанию. По явному выбору пользователя или для клиента без OAuth допускается ручное подключение через API-ключ: храни ключ в `LIDFLY_TOKEN`, а в конфиге указывай ссылку на переменную окружения по синтаксису клиента; см. `docs/setup-api-key.md`. Не добавляй обязательный Bearer header в общие OAuth-конфиги и не смешивай два способа авторизации в одном подключении. Старый `mcp-remote` оставляй только для клиентов без native HTTP MCP.
 
 `tools/list` в v3 показывает компактный набор верхнеуровневых meta-инструментов, включая:
 
@@ -68,7 +87,7 @@ subscription_status
 Для рекламных и provider-задач при неизвестном кабинете, клиенте, подключении или Пространстве сначала вызывай:
 
 ```js
-get_provider_context({ provider: "yandex" | "vk" | "avito" | "avito_ads" | "lidfly" | "workspace", query? })
+get_provider_context({ provider: "yandex" | "vk" | "avito" | "avito_ads" | "lidfly" | "workspace", query?, client_login? })
 ```
 
 Если пользователь назвал кампанию или часть названия кампании, сначала вызывай:
@@ -77,7 +96,11 @@ get_provider_context({ provider: "yandex" | "vk" | "avito" | "avito_ads" | "lidf
 resolve_campaign_scope({ provider: "yandex" | "vk" | "avito_ads", query, workspace_project_id? })
 ```
 
-Дальше переноси в следующий `call_tool` или `call_write_tool` только возвращённые `scope_arguments` или `next_call.arguments`. Не придумывай `client_login`, `client_id`, `account_id`, `counter_id` или `host_id` из имени проекта.
+`query` — свободный поиск по проекту, названию, ИНН и отображаемым идентификаторам. Для Яндекс Директа точный логин передавай отдельно в `client_login`; оба поля можно использовать вместе. Legacy-вызов с логином в `query` допустим только как compatibility path и всё равно требует exact live-проверки.
+
+Дальше переноси в следующий `call_tool` или `call_write_tool` только возвращённые `tool_args`, `scope_arguments` или `next_call.arguments`. Не придумывай `client_login`, `client_id`, `account_id`, `counter_id` или `host_id` из имени проекта, `external_entity_name` или `external_entity_key`. Проверяй `scope_issues`: автоматически выполняй только read-only `next_action` с `may_execute_automatically=true`; `manual_scope_review`, неоднозначность, конфликт, outage и not-found нельзя обходить догадками.
+
+Если выбранное Пространство ещё не связано с активным кабинетом, `get_provider_context` может вернуть `provider_link_candidates`. Это проверенные личные scopes, но они не исполняемы внутри проекта до записи связи. Выбери точный кандидат; если пользователь попросил привязать кабинет, выполни только его готовый `next_action` через `call_write_tool` с обычным подтверждением MCP-клиента. Не добавляй `client_login`, не собирай arguments вручную и не отправляй обращение в поддержку: отсутствие project link — штатный подтверждаемый write-сценарий. Если кандидатов несколько, сначала попроси выбрать кабинет. Read-only участникам такие кандидаты не возвращаются.
 
 Для campaign write в командных/агентских Пространствах всегда передавай точный `workspace_project_id`. Исключение допустимо только если `call_write_tool` preflight по campaign id нашёл ровно один Workspace/provider scope и явно вернул следующий безопасный вызов.
 
@@ -139,8 +162,10 @@ workspace_project_id
 
 - Для Директа `connection_id` выбирает OAuth-подключение, `client_login` выбирает клиентский кабинет внутри подключения.
 - Перед multi-account задачами вызывай `get_provider_context({ provider: "yandex" })`.
+- Если известен точный логин, вызывай `get_provider_context({ provider: "yandex", client_login, query? })`; не подставляй его в `query` в новых вызовах.
 - Для кампании по имени сначала `resolve_campaign_scope({ provider: "yandex", query })`.
 - Для Метрики не используй `client_login`; передавай `counter_id` и при необходимости `connection_id`.
+- `GoalId=13` — служебное значение «все PriorityGoals», а не количество целей. `get_strategy_learning_status` даёт расчётную оценку Reports API, не нативный статус из интерфейса Директа; при расхождении доверяй интерфейсу и никогда не превращай «статус не определён» в «обучение идёт нормально».
 - Новые управляемые объявления по умолчанию: `add_unified_campaign` -> `add_adgroup` с `UNIFIED_AD_GROUP` -> `add_keywords_batch` -> `add_responsive_ad`. `add_adgroups` создаёт только legacy `TEXT_AD_GROUP` и не используется для `UNIFIED_AD_GROUP`.
 - `add_campaign`, `add_ad`, `add_ads` - только legacy/compatibility для старых текстовых сценариев.
 - Бюджеты Директа передавай в рублях обычным числом; не конвертируй в микроюниты.
@@ -189,12 +214,16 @@ workspace_project_id
 
 ### LidFly Sites And Commerce
 
+- Для создания страницы или существенного редизайна используй [lidfly-site-commerce](skills-source/lidfly-site-commerce/SKILL.md) и его четыре visual guides по этапу: creative-page-direction → frontend-page-craft → visual-assets (если нужны медиа) → visual-qa. Сначала задай композицию, типографику, плотность и мобильное представление; после записи посмотри реальные desktop/mobile изображения и проверь взаимодействия. Technical pass не подтверждает визуальное качество. Для точечной правки сохраняй существующий стиль и проверяй затронутую область.
 - "Тема оформления" - визуальные tokens: цвета, шрифты, радиусы.
 - "Шаблон сайта" - persistent site-level design system: header, footer, карточки, checkout, page blueprints.
+- Перед первой записью в существующий сайт с `design_template_id` вызывай `lidfly_audit_site_design_template`; по умолчанию сохраняй inheritance, starter-блоки и site-level chrome. `confirm_template_deviation=true` допустим только после показа конкретных последствий и явного текстового согласия пользователя, никогда автоматически или из-за auto-approve.
 - Commerce source of truth - PostgreSQL/store tools; опубликованный HTML в `/sites` только publish artifact.
 - Для унаследованного `premium-header` или `commerce-header` с заданным `logoImage` размер логотипа-картинки меняется через `lidfly_get_site_chrome` → `lidfly_update_site_chrome` и `logoSize: compact|regular|large`; при просьбе увеличить вертикальный или детализированный логотип выбирай `large`, а не утверждай, что контейнер увеличить нельзя. У `site-header` и `gallery-header` поля `logoSize` нет.
+- Custom CSS веди отдельными инструментами: сначала `lidfly_get_css`, затем `lidfly_update_page_css` для одной страницы или `lidfly_update_site_css` для общих правил, с `expected_custom_css_sha256` из того же чтения. Не передавай `custom_css` в `lidfly_update_page`: отсутствие поля сохраняет текущий CSS; пустая строка в CSS-инструменте очищает выбранный уровень. Каскад: theme tokens → platform block CSS → site CSS → page CSS; лимит каждого уровня 64 KiB, `</style` запрещён. На шаблонном сайте непустой CSS требует явного согласия и `confirm_template_deviation=true`.
 - YooKassa seller secrets никогда не показывай пользователю.
 - `generate_ad_image` или аналогичные платные генерации запускай только после показа prompt, format/crop и явного подтверждения.
+- Для managed-сайта с `design_template_id="knowledge-base"` маршрутизируй ingest, query-to-wiki, provenance, relations, findings, changesets и lint в `$lidfly-knowledge-maintainer`. `$lidfly-site-commerce` отвечает только за обычные операции сайта, Commerce и выбор шаблона; не обновляй knowledge entries последовательными page writes.
 
 ## Wordstat
 
@@ -225,8 +254,9 @@ workspace_project_id
 - VK Ads: `agent-vk.md`, `VK-ADS-RULES.md`
 - Бизнес-настройки: `PROJECTS.md`
 - Юридические ограничения публичного контента: `LEGAL.md`
-- Canonical skills: `skills-source/`
-- Skill sync: `node scripts/sync-skills.mjs`
+- Canonical authoring skills: `direct-mcp/skills-source` in the main LidFly repository. Local `skills-source/` is a generated signed-release projection; do not edit it manually.
+- Verified pull: `node scripts/pull-lidfly-skills.mjs`; client layout sync: `node scripts/sync-skills.mjs`
+- Обновление не происходит автоматически при правке основного `direct-mcp/skills-source`: сначала нужен подписанный выпуск, затем ручной pull и sync в этом репозитории. Workflow `pull-lidfly-skills.yml` запускается через `workflow_dispatch`, расписания нет. Pull проверяет подпись и lock, sync обновляет четыре клиентских каталога; ручные расхождения нельзя перезаписывать. `AGENTS.md` и `CLAUDE.md` этими командами не генерируются.
 - Codex plugin export: `node scripts/sync-skills.mjs --plugin-target ../lidfly-plugins/plugins/lidfly/skills`
 
 При изменении общих правил обновляй `AGENTS.md` и `CLAUDE.md` парой.

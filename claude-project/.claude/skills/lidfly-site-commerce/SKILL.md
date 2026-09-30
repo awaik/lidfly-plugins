@@ -1,6 +1,6 @@
 ---
 name: lidfly-site-commerce
-description: "Работать с сайтами и Commerce LidFly через MCP v3: страницы, SEO/social metadata, Schema.org, RSS/YML feeds, файлы, лиды, аналитика, публикация, товары, остатки, заказы и платежи. Использовать для операций с сайтом или магазином с точным scope и защитой секретов YooKassa."
+description: "Создавать, оформлять и проверять сайты LidFly через MCP v3: визуальная концепция, шаблоны, блоки, изображения, адаптивность и visual QA. Также страницы, базы знаний, SEO/GEO, feeds, файлы, лиды, публикация, товары, остатки, заказы и платежи с точным scope и защитой секретов YooKassa."
 ---
 
 # LidFly Site Commerce
@@ -21,84 +21,75 @@ Use for LidFly sites, landing pages, published pages, SEO and social metadata, S
 
 ## Workflow
 
+### Visual work
+
+For a new page or substantial redesign, complete this cycle in the authorized
+scope. For a local correction, preserve the direction and check the affected area;
+an order, inventory or SEO-metadata operation does not require a redesign.
+
+1. Read the current site and references. State one concrete visual direction:
+   audience/task, hierarchy, typography, palette, grid, spacing and image treatment.
+   Read [Creative page direction](references/creative-page-direction.md).
+2. Map the content to native templates and blocks, with an intentional mobile
+   arrangement. Read [Frontend page craft](references/frontend-page-craft.md).
+   A blueprint is a starting point, not a section quota. Knowledge pages need
+   readable structure; do not force a sales hero or repeated oversized cards.
+3. When media is needed, read [Visual assets](references/visual-assets.md): plan
+   roles/crops, inspect actual images and verify their asset bindings. Preserve
+   supplied content; do not invent evidence or require paid generation.
+4. Read [Visual QA](references/visual-qa.md). After applying changes, inspect actual
+   desktop/mobile screenshots and interactions against the brief; fix visible
+   defects and recheck the new revision. Technical pass or successful publication
+   alone is not aesthetic approval. If viewing is unavailable, say QA is incomplete.
+
+In MCP/chat, load these relevant references with get_skill_resource using
+name="lidfly-site-commerce" and the exact path above; installed clients read the
+local files. Load them by stage, not every operational reference at once.
+
+### Native operations
+
+Choose blocks by observable interaction before appearance: whole-card navigation,
+image zoom, separate CTA, or opening a form. For focused edits read the current
+section snapshot; use blueprints for page composition. Compare filtered catalog
+description/purpose/visible_when and read the selected definition. Continue pagination
+or narrow filters if has_more; explain unsupported behavior without replacing a
+requested whole-card link with a separate button. After saving, disclose warnings
+and test clicks, target anchors, unwanted zoom, keyboard and mobile behavior.
+
+For a managed site with `design_template_id="knowledge-base"`, route ingest, query-to-wiki, provenance, relations, findings, changesets, and lint to `$lidfly-knowledge-maintainer`; do not emulate knowledge updates with sequential page writes.
+
 1. If the site, store, owner, or project is unclear, call the top-level `get_provider_context({ provider: "lidfly", query? })` and use only returned scope arguments.
 2. Find internal LidFly tools with `search_tools`.
 3. Read each internal tool schema with `get_tool_schema` before its first call.
-4. Use `call_tool` for reads: sites, pages, assets, leads, analytics, stores, orders.
-5. Use `call_write_tool` for publishing, uploads, store/order changes, payment setup, and image generation.
+4. Use `call_tool` for reads: sites, pages, assets, leads, analytics, stores, orders, and CRM delivery diagnostics.
+5. Use `call_write_tool` for publishing, uploads, store/order changes, payment setup, CRM profile/policy changes, delivery resolution, and image generation.
 6. For paid image generation, show prompt, format, crop, and wait for explicit confirmation.
+7. Never run two write calls for the same site in parallel. Before a write to a known URL/site_id/subdomain/name, refresh the targeted `get_provider_context({ provider: "lidfly", query: "..." })`; use `lidfly_list_sites` only when the site is unknown. Continue only when `publication_write.status="idle"` and use its fresh `publication_revision`. If it is `busy`, wait for the named operation to finish, reread the same targeted scope, verify the previous write's actual state, and only then make at most one retry.
 
-## SEO, Social Metadata And Feeds
+For a new or substantially revised managed site, use the server-verifiable workflow from [MCP v3 compatibility methodology](references/methodology.md): declare the page and image scope, inspect compact snapshots, choose a blueprint, apply one acceptance-bound changeset, then verify the exact revision on desktop and mobile. A successful write means only that changes were applied. Say that the site is ready only after promised routes/assets and visual QA pass; disclose every visual warning explicitly.
 
-Use the exact `subdomain` from the latest read. Change source fields through LidFly tools and let the platform rebuild canonical URLs, JSON-LD, social meta, RSS, feeds, and managed HTML. After every write, reread the same source object; do not treat a successful tool call as verification by itself.
+For several desired-state edits on one site, save them sequentially and publish once after all edits. In particular, multiple taxonomy node page overrides use `get_catalog_node_page → update_catalog_node_page` one node at a time, followed by one `preview_catalog_publish → publish_store` flow.
 
-### Organization And Local Business Schema
+### Privacy consent on managed sites
 
-1. Find `lidfly_get_site_seo_profile` and `lidfly_update_site_seo_profile` with `search_tools`, then read each schema with `get_tool_schema` before its first call.
-2. Call `lidfly_get_site_seo_profile` through `call_tool` with the exact `subdomain`. Keep its full profile, `updated_at`, and `publication_revision` from the same read.
-3. Call `lidfly_update_site_seo_profile` through `call_write_tool` with the full replacement profile, exact `expected_updated_at`, and exact `expected_publication_revision`. This is a destructive full replacement: omitted profile fields are cleared to their empty/default values, and `profile: {}` removes the public organization entity. Do not send a partial profile or automatically retry a stale conflict.
-4. Call `lidfly_get_site_seo_profile` again and reread the effective Organization, OnlineStore, LocalBusiness, or more specific factual business type.
+- Privacy consent is a site-level managed capability, not CSS, arbitrary HTML, a custom checkbox field, or a Bitrix24-only setting.
+- Use `lidfly_get_site_privacy_consent` to read the current policy and exact revisions. Publish every referenced internal document route first, then call `lidfly_update_site_privacy_consent` with those exact revisions, and finish with a control read.
+- `form.required=true` adds one required unchecked checkbox to every standard managed lead form. Use distinct `consent_url` and `privacy_policy_url`; changing enabled text or links requires a new version.
+- `analytics.required=true` enables the site-wide accept/reject banner and keeps Yandex Metrika and optional tracking inert until acceptance. A new analytics version asks visitors again.
+- Verify submitted proof through `lidfly_get_leads`: `consent` must include acceptance time, current version, immutable text, both document URLs, and the submitting page URL. Do not claim compliance from visual presence alone.
 
-Use only public, factual contacts, address/geo, opening hours, `sameAs`, service area, and buyer-visible merchant policies. Do not copy external organization reviews into JSON-LD. Schema eligibility does not guarantee positions, stars, or a rich result.
+## Progressive References
 
-### Page Open Graph And Twitter Cards
+Read only the reference needed for the current task:
 
-1. Call `lidfly_get_page` with the exact `subdomain` and `slug`. Stop if the page is a static artifact, generated Commerce route, unknown publication, or otherwise not editable through managed page tools.
-2. For every saved block index returned by the page read, call `lidfly_get_block` and reconstruct all blocks with their complete `type`, `id`, and `props`.
-3. Call `lidfly_update_page` through `call_write_tool` only with a complete replacement payload from the same page read: the same exact `slug`; all blocks; the saved `title`, `description`, `og_image`, `theme_preset`, `theme`, `custom_css`, `page_kind`, `inherit_site_design`, and `auto_structured_data`, except fields the user explicitly changes; plus the latest `expected_publication_revision` required by the tool schema. Missing blocks are deletions, and omitted optional page fields are reset or defaulted.
-4. Call `lidfly_get_page` again and reread the page. Open Graph, Twitter Cards, canonical, WebPage JSON-LD, and managed HTML are generated automatically from the source fields.
-
-For one block-only change, prefer `lidfly_update_block`; do not replace the whole page. A static site must be changed in its source project and republished through the supported full static-deployment flow.
-
-### Articles And RSS
-
-Publish or update an article through `lidfly_publish_blog_article`; LidFly generates Article JSON-LD, Open Graph, Twitter Cards, and the marker-owned `/rss.xml`. There is no separate RSS write tool. A user-owned `/rss.xml` is preserved and reported as a warning rather than overwritten.
-
-### VideoObject
-
-1. Call `lidfly_list_blocks` and inspect the `video-embed` source contract.
-2. Call `lidfly_get_page`, then `lidfly_get_block` for the exact video block.
-3. Call `lidfly_update_block` with all current `video-embed` props and the intended embed/preview/date/duration values. LidFly derives VideoObject fields such as `thumbnailUrl`, `uploadDate`, and `duration`; do not edit the generated VideoObject directly.
-4. Reread the block and page after the write.
-
-### Commerce Schema And Feeds
-
-The Commerce source of truth is products, variants, taxonomy, inventory, and store settings in PostgreSQL-backed tools. Read and update those records, use preview tools when the chosen operation exposes them, then call `lidfly_publish_store`. Publication generates Product or ProductGroup, visible-catalog OfferCatalog, `/yandex-market.yml`, and `/google-merchant.xml` from valid active physical products and variants. It may exclude invalid offers, including variants without a usable HTTPS image; report the returned feed counts and warnings.
-
-YML generation in LidFly and feed registration in Yandex Webmaster are separate workflows. Use the Yandex Webmaster skill only when the user explicitly asks to register or update the ready feed URL: start with `webmaster_get_hosts`, use the exact `host_id` without `client_login`, inspect the target host and feed state, and perform registration as a separate confirmed write.
-
-When `crawler_indexing_blocked=true`, missing sitemap, `/rss.xml`, and generated feeds are expected privacy behavior and not an SEO defect. Do not recommend enabling indexing unless the user explicitly asks for launch readiness or says the site should already be indexable.
-
-Do not manually edit JSON-LD, `schemaOrigin`, `ssrProducts`, generated HTML, RSS, YML, Google Merchant XML, or platform-owned sitemap files. Do not promise indexing, ranking growth, stars, or rich results.
-
-## Site Chrome And Design Template
-
-### Change Header Logo Size
-
-For an inherited `premium-header` or `commerce-header`, change the image logo size through site chrome instead of replacing the image with a larger bitmap or claiming that the logo container cannot grow:
-
-1. Call `lidfly_get_site_chrome` through `call_tool` and verify that `header_type` is `premium-header` or `commerce-header`.
-2. Verify that `effective.header.logoImage` is set. Without `logoImage`, `logoSize` does not change the decorative mark or text brand.
-3. Choose `logoSize`: `compact` for a smaller logo, `regular` for the legacy default, or `large` for a larger responsive logo. Prefer `large` when the user asks to enlarge a vertical or detailed logo.
-4. Call `lidfly_update_site_chrome` through `call_write_tool` with `change.operation: "set"`, the exact current header type (`premium-header` or `commerce-header`), `props: { logoSize }`, and the exact `expected_updated_at` plus `expected_publication_revision` from the read.
-5. Call `lidfly_get_site_chrome` again and verify `effective.header.logoSize`.
-
-`site-header` and `gallery-header` do not support `logoSize`; do not send the field for those header types.
-
-The `large` preset keeps separate desktop, mobile, and compact scrolled sizes. Do not use page-level CSS or edit published HTML artifacts for inherited site chrome.
-
-### Change Site Design Template
-
-For an existing site, use the shared read → write → reread workflow:
-
-1. Call `lidfly_list_sites` through `call_tool`; use the exact `subdomain` and note the current template id.
-2. Call `lidfly_list_site_design_templates` through `call_tool`; use an exact registry id.
-3. Call `lidfly_set_site_design_template` through `call_write_tool` with `subdomain`, `design_template_id`, and normally `rebuild_existing_pages: true`.
-4. Call `lidfly_list_sites` again and verify the resulting template id.
-
-An empty `design_template_id` resets the site template. The write changes the persistent site-level profile and safely rebuilds managed HTML artifacts by default; it does not replace page `index.json`, content blocks, or the existing homepage with another template's starter page. HTML-only pages, static deployments, standalone pages with `inheritSiteDesign=false`, local design overrides, and user-owned files on generated paths are preserved and may be returned as warnings. A partial rebuild keeps the saved profile; rerun the same id with `rebuild_existing_pages: true` to reconcile.
-
-Only the site owner or a shared-site `admin` may change the template. A shared-site `write` grant must not attempt this write.
+- The four visual guides above — required by stage for page creation/redesign, proportional to a focused correction.
+- [Managed pages](references/managed-pages.md) — native widgets, page metadata and video blocks.
+- [Site chrome](references/site-chrome.md) — inherited header/footer and design templates.
+- [Static sites](references/static-sites.md) — archive preview and full deployment.
+- [Commerce](references/commerce.md) — products, imports, add-ons and storefront feeds.
+- [Shared galleries](references/shared-galleries.md) — albums, category examples, preview/apply, operation status and Bitrix inventory.
+- [SEO and feeds](references/seo-feeds.md) — GEO readiness, Organization, articles and RSS.
+- [MCP v3 compatibility methodology](references/methodology.md) — mandatory compact workflow in initial chat activation and the legacy `get_methodology` projection.
 
 ## Workspace
 
