@@ -26,21 +26,17 @@ Use for VK Ads campaigns, ad groups, banners, lead forms, statistics, audiences,
 
 ## Write Safety
 
-- Read current campaign/group/banner first.
-- Show plan, budget impact, and fields to change.
-- Wait for explicit confirmation.
-- Use `call_write_tool`.
-- Reread state and report before/after.
-- For agency/team Пространства include exact `workspace_project_id`.
-- For a new campaign, call `vk_prepare_campaign`, then pass exactly one bootstrap ad group to `vk_create_campaign`. Do not include nested `banners`.
-- Always read `checked_packages.goal_mode` from preflight before using `priced_goal`: `required` needs a valid named goal, `forbidden` rejects it, and `unsupported` stops before POST.
-- For `goal_mode=required`, get the goal from `vk_get_goals` / `vk_get_counter_goals`: a counter goal uses `priced_goal.name=condition:substr` and the counter ID as `source_id`. For VK Mini Apps with `priced_event_type=43`, use `vk_get_inapp_events`, `name=event.name`, and `source_id=tracker.id`.
-- Do not require a goal merely because the objective is `site_conversions`, and do not treat `options.settings.priced_goal`, the package name, or package 3509 (`priced_event_type=0`) as proof of goal compatibility.
-- Do not remove an incompatible goal without user agreement. Offer the explicit alternatives: keep CPC/CPM without a named goal, or choose a compatible goal/oCPM package.
-- Treat `package_priced_goal_forbidden`, `package_priced_goal_required`, and `package_goal_policy_unsupported` as no-side-effect preflight failures. Treat `provider_goal_package_mismatch` / `inconsistent_priced_goal` as a ban on retrying the same payload.
-- Treat the created campaign and bootstrap group as `blocked`. Create remaining groups and banners with separate write tools, reread every object, and activate only as a final separate action.
-- If the result contains `outcome=unknown` or `outcome=ambiguous`, call top-level `get_write_operation_status({ operation_id })`. Keep the same campaign name and never send another create.
-- If status remains unresolved, offer a safe support draft containing the `operation_id`, never the raw payload or credentials.
+Before any campaign or ad-group write, read [VK goal mode and write safety](references/goal-mode.md). It is the source of truth for `checked_packages.goal_mode`, `priced_goal`, bootstrap groups and ambiguous outcomes.
+
+The compact legacy provider projection is [methodology](references/methodology.md).
+
+## Analytics
+
+Before evaluating statistics, CPA, reach, budget distribution, missing impressions or a reach forecast, read [VK Ads analytics](references/analytics.md). Tool descriptions carry no evaluation thresholds; judgment comes from that reference and the client's goals in project memory.
+
+## Phrase Expansion
+
+Offer `search_phrase_vectorization` only when the user wants broader reach from contextual phrases; do not enable it as a default optimization. Explain the audience change before confirmation, use a phrase segment in `targetings.segments`, and reread the field after creation. Manual user-filter does not support this setting. An unconfirmed write must not be repeated. Source: [VK AdGroup API](https://ads.vk.ru/doc/api/object/AdGroup), local documentation checked 2026-09-26; live reads on the own account accepted `fields` but omitted this field, so absence is not proof of `false`.
 
 ## Creative And Text
 
@@ -56,3 +52,5 @@ Save decisions, campaign snapshots, analytics summaries, and follow-up scheduled
 ## Google Export
 
 When the user asks to export a VK Ads report to Google Sheets or Google Docs, keep this skill for account/campaign scope and report reads, then hand the verified Google write and reread to `$export-ad-reports`.
+
+The export handoff applies only when this host exposes the skill and a Google write connector. If either is unavailable, state the exact missing capability and return the requested report as a draft; do not claim a saved Google file or silently switch to Workspace.

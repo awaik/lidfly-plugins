@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 
 export const BUNDLE_SCHEMA_VERSION = 3;
 export const MIN_BUNDLE_SCHEMA_3_INSTALLER_VERSION = "1.3.0";
+// Published installers reject a content archive with more entries than
+// MAX_ARCHIVE_ENTRIES in installer/src-tauri/src/content_update.rs. The
+// archive holds plugin-bundle-files.json plus one entry per bundle file.
+export const MAX_CONTENT_ARCHIVE_ENTRIES = 512;
 export const GENERATED_SKILLS_MANIFEST_PATH =
   "plugins/lidfly/skills/.lidfly-generated-skills.json";
 export const SKILLS_SOURCE_LOCK_PATH = "plugins/lidfly/skills-source.lock.json";
@@ -698,6 +702,11 @@ export async function inspectSourceBundle(repositoryRoot) {
   if (!rootStat.isDirectory())
     throw new Error(`Repository root is not a directory: ${root}`);
   requireClaudeProjectAllowlist();
+  if (BUNDLE_PATHS.length + 1 > MAX_CONTENT_ARCHIVE_ENTRIES) {
+    throw new Error(
+      `Bundle has ${BUNDLE_PATHS.length} files; published installers accept at most ${MAX_CONTENT_ARCHIVE_ENTRIES - 1}`,
+    );
+  }
   const files = [];
   for (const relativePath of BUNDLE_PATHS)
     files.push(await readAllowedFile(root, relativePath));

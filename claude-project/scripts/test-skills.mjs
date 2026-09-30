@@ -8,6 +8,28 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = path.join(root, "skills-source");
+const pullScript = fs.readFileSync(path.join(root, "scripts/pull-lidfly-skills.mjs"), "utf8");
+const pullWorkflow = fs.readFileSync(path.join(root, ".github/workflows/pull-lidfly-skills.yml"), "utf8");
+const releaseLock = JSON.parse(fs.readFileSync(path.join(sourceRoot, ".lidfly-release-lock.json"), "utf8"));
+
+assert.match(pullScript, /PUBLIC_BASE_URL = "https:\/\/lidfly\.ru\/skills-releases\/"/, "generated pull must use the fixed public release origin");
+assert.match(pullScript, /PUBLIC_KEY_SPKI_BASE64 = "MCowBQYDK2VwAyEA[^\"]+"/, "generated pull must pin the dedicated public key");
+assert.match(pullScript, /crypto\.verify\(null, bytes, key, signature\)/, "generated pull must verify detached Ed25519 signatures");
+assert.match(pullScript, /digest\(manifestBytes\) !== latest\.manifest_digest[\s\S]*digest\(canonicalJson\(manifest\.skills\)\) !== manifest\.registry_digest/, "generated pull must verify manifest and registry digests");
+assert.match(pullScript, /bytes\.byteLength !== file\.bytes \|\| digest\(bytes\) !== file\.digest/, "generated pull must verify every released file");
+assert.match(pullScript, /Refusing to overwrite manually diverged projection file/, "generated pull must fail closed on manually changed files");
+assert.match(pullScript, /JSON\.stringify\(previousLock\) !== JSON\.stringify\(nextLock\)/, "generated pull check must include the deterministic lock");
+assert.match(pullScript, /!Number\.isInteger\(manifest\.minimum_runtime_contract_version\)/, "generated pull must reject non-integer runtime contract versions");
+assert.doesNotMatch(pullScript, /bootstrap-current/, "generated pull must not expose the lock bypass used only during initial adoption");
+assert.match(pullScript, /containsNonDirectoryEntry[\s\S]*fs\.rmSync\(absolute, \{ recursive: true \}\)/, "generated pull must remove released skill directories that contain only empty subdirectories");
+assert.match(pullWorkflow, /workflow_dispatch:[\s\S]*pull-lidfly-skills\.mjs[\s\S]*sync-skills\.mjs --check[\s\S]*gh pr create/, "generated pull workflow must support manual verified sync and open its own PR");
+assert.doesNotMatch(pullWorkflow, /^\s+schedule:/m, "generated pull must not be scheduled before the public release origin is live");
+assert.match(pullWorkflow, /actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1/, "checkout action must be pinned to a full commit SHA");
+assert.match(pullWorkflow, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/, "setup-node action must be pinned to a full commit SHA");
+assert.equal(releaseLock.schema_version, 1);
+assert.equal(releaseLock.key_id, "lidfly-skills-2026-01");
+assert.match(releaseLock.registry_digest, /^sha256:[a-f0-9]{64}$/);
+assert.match(releaseLock.manifest_digest, /^sha256:[a-f0-9]{64}$/);
 
 function markdownSection(source, heading) {
   const marker = `${heading}\n`;
@@ -26,7 +48,7 @@ const skills = fs
   .map((entry) => entry.name)
   .sort();
 
-assert.equal(skills.length, 22, "unexpected canonical skill count");
+assert.equal(skills.length, 25, "unexpected generated skill count");
 
 execFileSync(
   process.execPath,
@@ -45,7 +67,7 @@ const sourceSnapshot = JSON.parse(
   ),
 );
 assert.equal(sourceSnapshot.schema_version, 1);
-assert.equal(sourceSnapshot.skill_count, 22);
+assert.equal(sourceSnapshot.skill_count, 25);
 assert.equal(sourceSnapshot.files.length, sourceSnapshot.file_count);
 assert.match(sourceSnapshot.skills_tree_sha256, /^[a-f0-9]{64}$/);
 assert.deepEqual(
@@ -104,8 +126,32 @@ const siteCommerceSkill = fs.readFileSync(
   path.join(sourceRoot, "lidfly-site-commerce/SKILL.md"),
   "utf8",
 );
+const siteManagedPages = fs.readFileSync(
+  path.join(sourceRoot, "lidfly-site-commerce/references/managed-pages.md"),
+  "utf8",
+);
+const siteSeoFeeds = fs.readFileSync(
+  path.join(sourceRoot, "lidfly-site-commerce/references/seo-feeds.md"),
+  "utf8",
+);
+const siteCommerceReference = fs.readFileSync(
+  path.join(sourceRoot, "lidfly-site-commerce/references/commerce.md"),
+  "utf8",
+);
+const siteChromeReference = fs.readFileSync(
+  path.join(sourceRoot, "lidfly-site-commerce/references/site-chrome.md"),
+  "utf8",
+);
+const siteFloatingVideoSection = markdownSection(
+  siteManagedPages,
+  "### Native Floating Video Widget",
+);
+execFileSync(process.execPath, [path.join(root, "scripts/test-lidfly-knowledge-maintainer.mjs")], {
+  cwd: root,
+  stdio: "inherit",
+});
 const siteSeoSection = markdownSection(
-  siteCommerceSkill,
+  siteSeoFeeds,
   "## SEO, Social Metadata And Feeds",
 );
 const siteSeoProfileSection = markdownSection(
@@ -113,23 +159,28 @@ const siteSeoProfileSection = markdownSection(
   "### Organization And Local Business Schema",
 );
 const siteSocialSection = markdownSection(
-  siteSeoSection,
+  siteManagedPages,
   "### Page Open Graph And Twitter Cards",
 );
 const siteArticlesSection = markdownSection(
   siteSeoSection,
   "### Articles And RSS",
 );
-const siteVideoSection = markdownSection(siteSeoSection, "### VideoObject");
+const siteVideoSection = markdownSection(siteManagedPages, "### VideoObject");
 const siteCommerceFeedsSection = markdownSection(
-  siteSeoSection,
+  siteCommerceReference,
   "### Commerce Schema And Feeds",
 );
 const siteChromeSection = markdownSection(
-  siteCommerceSkill,
+  siteChromeReference,
   "## Site Chrome And Design Template",
 );
 
+assert.match(
+  siteFloatingVideoSection,
+  /lidfly_get_floating_video_widget[\s\S]*lidfly_update_floating_video_widget[\s\S]*close_persistence="session"[\s\S]*close_persistence="page"[\s\S]*F5/i,
+  "floating video guidance must explain both close lifetimes and map reload requests to page mode",
+);
 assert.match(
   siteChromeSection,
   /premium-header[\s\S]*commerce-header[\s\S]*logoImage[\s\S]*logoSize[\s\S]*compact[\s\S]*regular[\s\S]*large/,
@@ -166,7 +217,6 @@ for (const field of [
   "og_image",
   "theme_preset",
   "theme",
-  "custom_css",
   "page_kind",
   "inherit_site_design",
   "auto_structured_data",
@@ -178,7 +228,7 @@ for (const field of [
 }
 assert.match(
   siteSocialSection,
-  /Missing blocks are deletions[\s\S]*omitted optional page fields are reset or defaulted/,
+  /Missing blocks are deletions[\s\S]*omitted optional page fields[^.]*reset[^.]*default/,
   "full page replacement must warn about both block deletion and optional-field reset",
 );
 assert.match(
@@ -197,7 +247,7 @@ assert.match(
   "store publication must own product schema and generated feeds",
 );
 assert.match(
-  siteSeoSection,
+  `${siteSeoSection}\n${siteCommerceReference}`,
   /Do not manually edit[\s\S]*JSON-LD[\s\S]*schemaOrigin[\s\S]*ssrProducts[\s\S]*generated HTML[\s\S]*RSS[\s\S]*YML/i,
   "clients must not mutate generated SEO artifacts or renderer internals",
 );
@@ -212,11 +262,80 @@ assert.match(
   "YML generation and Webmaster registration must remain separate workflows",
 );
 
+const pageMigrationSkill = fs.readFileSync(
+  path.join(sourceRoot, "lidfly-page-migration/SKILL.md"),
+  "utf8",
+);
+assert.match(
+  pageMigrationSkill,
+  /lidfly_list_pages[\s\S]*lidfly_get_page[\s\S]*lidfly_get_block[\s\S]*design_template_id[\s\S]*lidfly_audit_site_design_template[\s\S]*before the first write/i,
+  "page migration must audit an active site template before its first write",
+);
+assert.match(
+  pageMigrationSkill,
+  /intended template deviation[\s\S]*explicit textual confirmation before the write[\s\S]*confirm_template_deviation: true[\s\S]*auto-approve is not confirmation/i,
+  "page migration must confirm template deviations before writing",
+);
+assert.match(
+  pageMigrationSkill,
+  /complete replacement payload from the same page read[\s\S]*all reconstructed blocks[\s\S]*expected_publication_revision[\s\S]*Missing blocks are deletions[\s\S]*omitted optional fields can reset/i,
+  "page migration must use a complete CAS-guarded page replacement",
+);
+for (const field of [
+  "title",
+  "description",
+  "og_image",
+  "theme_preset",
+  "theme",
+  "page_kind",
+  "inherit_site_design",
+  "auto_structured_data",
+]) {
+  assert.ok(
+    pageMigrationSkill.includes(`\`${field}\``),
+    `page migration replacement must preserve ${field}`,
+  );
+}
+assert.match(
+  pageMigrationSkill,
+  /Do not call `lidfly_update_site_theme` for a page-only migration or improvement[\s\S]*separate operation[\s\S]*cross-page impact before the write/i,
+  "page-only migration must not mutate the site-wide theme",
+);
+assert.match(
+  pageMigrationSkill,
+  /Do not carry `custom_css` through this call[\s\S]*lidfly_get_css[\s\S]*lidfly_update_page_css[\s\S]*lidfly_update_site_css[\s\S]*expected_custom_css_sha256[\s\S]*64 KiB/i,
+  "page migration must keep CSS out of page replacement and use dedicated CAS-guarded CSS tools",
+);
+assert.match(
+  pageMigrationSkill,
+  /Reread the page after the write[\s\S]*rerun `lidfly_audit_site_design_template`/i,
+  "page migration must reread the page and reaudit template-sensitive changes",
+);
+
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
+assert.doesNotMatch(
+  readme,
+  /^(?:search_skills|get_skill|get_skill_resource)$/m,
+  "README must not advertise unavailable MCP meta-tools",
+);
+assert.match(
+  readme,
+  /^get_write_operation_status$/m,
+  "README must list the write-operation status tool used by current v3 workflows",
+);
 assert.match(
   readme,
   /^\| `lidfly-site-commerce` \|[^\n]*SEO\/social metadata[^\n]*Schema\.org[^\n]*RSS[^\n]*feeds \|$/m,
   "README must describe the expanded LidFly site/Commerce skill scope",
+);
+
+const agentsRules = fs.readFileSync(path.join(root, "AGENTS.md"), "utf8");
+const claudeRules = fs.readFileSync(path.join(root, "CLAUDE.md"), "utf8");
+assert.equal(agentsRules, claudeRules, "AGENTS.md and CLAUDE.md must stay synchronized");
+assert.match(
+  agentsRules,
+  /lidfly_get_css[\s\S]*lidfly_update_page_css[\s\S]*lidfly_update_site_css[\s\S]*expected_custom_css_sha256[\s\S]*Не передавай `custom_css` в `lidfly_update_page`[\s\S]*64 KiB/,
+  "project rules must route custom CSS through its dedicated tools",
 );
 
 const vkSkill = fs.readFileSync(
@@ -283,7 +402,7 @@ assert.match(
 );
 assert.match(
   transcriptionWorkflow,
-  /delete only the generated chunk paths recorded by this run[\s\S]*Do not delete the original media/,
+  /remove only recorded files owned by this run[\s\S]*cleanup is authorized[\s\S]*never delete the original media/i,
   "media workflows must clean up only their own temporary chunks",
 );
 
@@ -321,7 +440,7 @@ try {
     fs
       .readdirSync(pluginSkills, { withFileTypes: true })
       .filter((entry) => entry.isDirectory()).length,
-    22,
+    25,
     "plugin target must contain all canonical skills",
   );
 
@@ -447,12 +566,16 @@ const directSkill = fs.readFileSync(
   path.join(sourceRoot, "yandex-direct-campaign-builder/SKILL.md"),
   "utf8",
 );
-assert.match(directSkill, /add_adgroup with adgroup_type: UNIFIED_AD_GROUP/);
+const directCreationReference = fs.readFileSync(
+  path.join(sourceRoot, "yandex-direct-campaign-builder/references/campaign-creation-workflow.md"),
+  "utf8",
+);
+assert.match(directCreationReference, /add_adgroup with adgroup_type: UNIFIED_AD_GROUP/);
 assert.doesNotMatch(
-  directSkill,
+  directCreationReference,
   /add_adgroup\/add_adgroups[\s\S]*UNIFIED_AD_GROUP/,
 );
-assert.match(directSkill, /add_adgroups.*legacy `TEXT_AD_GROUP`/);
+assert.match(directCreationReference, /add_adgroups.*legacy `TEXT_AD_GROUP`/);
 const directLandingSection = markdownSection(
   directSkill,
   "## Лендинги Директа",
@@ -507,10 +630,10 @@ const editorialSkill = fs.readFileSync(
 assert.match(editorialSkill, /`references\/russian-patterns\.md`/);
 assert.match(editorialSkill, /^## Подготовка$/m);
 assert.match(editorialSkill, /^## Калибровка по жанру$/m);
-assert.match(editorialSkill, /^## Рабочий цикл$/m);
-assert.match(editorialSkill, /^## Смысл и структура$/m);
+assert.match(editorialSkill, /^## (?:Рабочий цикл|Двухэтапный цикл)$/m);
+assert.match(editorialSkill, /Зафиксировать защищённ/);
 assert.match(editorialSkill, /^## Защита от переусердствования$/m);
-assert.match(editorialSkill, /^## Режим результата$/m);
+assert.match(editorialSkill, /^## Результат$/m);
 assert.doesNotMatch(
   editorialSkill,
   /запретить длинное тире|заменить «ёлочки»/i,
@@ -522,9 +645,37 @@ const articleReviserSkill = fs.readFileSync(
 );
 assert.match(
   articleReviserSkill,
-  /\$human-editorial-polish[\s\S]*complete Russian-pattern catalog/,
+  /\$human-editorial-polish[\s\S]*(?:complete Russian-pattern catalog|русский каталог паттернов)/,
   "article-reviser must run the canonical Russian editorial pass",
 );
+const articleWriterSkill = fs.readFileSync(
+  path.join(sourceRoot, "article-writer/SKILL.md"), "utf8",
+);
+const videoArticleWriterSkill = fs.readFileSync(
+  path.join(sourceRoot, "video-article-writer/SKILL.md"), "utf8",
+);
+
+// The current canonical editorial skills serve the selected customer's project.
+// A connected provider must not become an implicit publisher or mandatory ad.
+for (const [name, source] of [
+  ["article-reviser", articleReviserSkill],
+  ["article-writer", articleWriterSkill],
+  ["video-article-writer", videoArticleWriterSkill],
+]) {
+  assert.doesNotMatch(source, /LidFly/i,
+    `${name}: generic editorial instructions must not impose a fixed publisher brand`);
+  assert.match(source, /бриф|brief/i,
+    `${name}: editorial decisions must follow the project brief`);
+}
+assert.match(articleReviserSkill, /^## Соответствие проекту$/m);
+assert.match(articleReviserSkill, /Нейтральный текст может получить `ship`/,
+  "article revision must accept informational work without promotional inserts");
+assert.match(articleWriterSkill, /^## Бренд и продукт проекта$/m);
+assert.match(articleWriterSkill, /не придумывать клиента, цитату, CPA/,
+  "article writing must retain honest example and evidence requirements");
+assert.match(videoArticleWriterSkill, /^## Project Brief$/m);
+assert.match(videoArticleWriterSkill, /never invent customer results, quotes, CPA/,
+  "derived articles must not invent customer outcomes");
 
 const editorialPatterns = fs.readFileSync(
   path.join(
@@ -565,7 +716,7 @@ assert.match(
 );
 assert.match(
   editorialPatterns,
-  /Замена импортированного образа русской остротой:[\s\S]*стратегию снова назвали черновиком/,
+  /В примерах удалять допустимо только неподтверждённую оценку и пустой повтор; сохранять каждую фактическую деталь/,
 );
 
 const aliasSkill = fs.readFileSync(

@@ -129,7 +129,7 @@ describe("plugin content release", () => {
       path.join(firstDirectory, first.bundle.filename),
     );
     const longEntry =
-      "plugin-bundle/claude-project/.openclaw/skills/video-article-writer/references/transcription-workflow.md";
+      "plugin-bundle/claude-project/.claude/skills/video-article-writer/references/transcription-workflow.md";
     expect(Buffer.byteLength(longEntry)).toBeGreaterThan(100);
     expect(readTarEntryNames(archive)).toContain(longEntry);
 

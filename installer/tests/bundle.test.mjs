@@ -22,6 +22,7 @@ import {
   CLAUDE_PROJECT_PREFIX,
   CLAUDE_PROJECT_REPOSITORY,
   GENERATED_SKILLS_MANIFEST_PATH,
+  MAX_CONTENT_ARCHIVE_ENTRIES,
   assertNoForbiddenText,
   inspectSourceBundle,
   isAllowedBundlePath,
@@ -214,6 +215,27 @@ describe("plugin bundle contract", () => {
       ),
     ).toBe(false);
     expect(isIncludedClaudeProjectSourcePath(".mcp.json")).toBe(false);
+    expect(
+      isIncludedClaudeProjectSourcePath(".codex/skills/demo/SKILL.md"),
+    ).toBe(false);
+    expect(
+      isIncludedClaudeProjectSourcePath(".openclaw/skills/demo/SKILL.md"),
+    ).toBe(false);
+    expect(
+      isIncludedClaudeProjectSourcePath(".claude/skills/demo/SKILL.md"),
+    ).toBe(true);
+  });
+
+  it("keeps the bundle within the published installer archive limit", async () => {
+    const rust = await readFile(
+      new URL("../src-tauri/src/content_update.rs", import.meta.url),
+      "utf8",
+    );
+    const limit = Number(
+      rust.match(/const MAX_ARCHIVE_ENTRIES: usize = (\d+);/u)?.[1],
+    );
+    expect(limit).toBe(MAX_CONTENT_ARCHIVE_ENTRIES);
+    expect(BUNDLE_PATHS.length + 1).toBeLessThanOrEqual(limit);
   });
 
   it("detects unknown snapshot files before managed files are removed", async () => {

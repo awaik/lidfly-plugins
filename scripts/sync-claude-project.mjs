@@ -41,7 +41,13 @@ const excludedSourcePaths = new Set([
   ".codex/notify_project.py",
   ".mcp.json",
 ]);
-const excludedSourcePrefixes = [".github/"];
+// Legacy Codex and OpenClaw skill copies are not used by Claude Desktop and
+// would push the content archive past the installer entry limit.
+const excludedSourcePrefixes = [
+  ".github/",
+  ".codex/skills/",
+  ".openclaw/skills/",
+];
 
 export function isIncludedClaudeProjectSourcePath(relativePath) {
   return (

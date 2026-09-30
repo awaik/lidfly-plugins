@@ -11,33 +11,45 @@ Use for Yandex Direct campaign creation, audit, optimization, budgets, keywords,
 
 1. `search_tools({ provider: "yandex", query })`.
 2. `get_tool_schema` before each new tool.
-3. Unknown account/client/project: `get_provider_context({ provider: "yandex", query? })`.
-4. Named campaign: `resolve_campaign_scope({ provider: "yandex", query, workspace_project_id? })`.
+3. Unknown account/client/project: `get_provider_context({ provider: "yandex", query? })`. Keep `query` for free project/name/INN search; when the exact Direct login is known, pass it separately as `client_login` (both fields may be used together).
+4. Known campaign ID: `resolve_campaign_scope({ provider: "yandex", campaign_id, connection_id?, client_login?, workspace_project_id?, date_from?, date_to? })`. For 16+ digits pass the ID as a string. Full exact name: use `campaign_name`; legacy `query` accepts only one exact ID or full exact name. Never pass more than one selector.
 5. Copy returned `scope_arguments` into Direct calls.
 6. Read through `call_tool`; write through `call_write_tool`.
 
 Direct tools use `connection_id` and optional `client_login`. Metrika tools use `counter_id` and optional `connection_id`, not `client_login`.
 
-## Default Modern Build
+`resolve_campaign_scope` returns a typed status. Use `resolved` only when one exact scope is proven; `ambiguous` requires an exact scope choice; `not_observed` is a successful empty result for the checked sources/period; `incomplete` means at least one required check failed; `failed` is a typed technical failure. `content[].text` is only a human-readable rendering and must never be parsed for campaign fields or execution decisions.
 
-Use modern managed campaigns by default:
+For `not_observed`, follow `diagnosis` instead of guessing a cause. `api_visibility` lists the sources that returned no campaign: this does not prove that the object is absent from the Direct web UI. `provider_access="verified"` with `oauth_reconnect.status="not_indicated"` means the listed scopes answered successfully, so do not reconnect OAuth. `checked_scopes[].selection` says who chose each cabinet: only a caller-supplied `connection_id` or `client_login` is `explicit`, while `workspace_project_id` is a memory boundary and stays `discovered`. When every checked scope is `explicit`, `yandex_client_login.status="not_required_for_explicit_scope"` and `next_action.kind="none"`: do not propose another scope, period, or the same reads without new evidence. When any scope was `discovered` and another Direct account is genuinely possible, `yandex_client_login.status="provide_if_campaign_is_in_another_account"`: request its exact `client_login` and use the prepared confirmed save action. Never invent the login or infer campaign-type support from an empty result.
 
-```text
-add_unified_campaign
--> add_adgroup with adgroup_type: UNIFIED_AD_GROUP
--> add_keywords_batch
--> add_responsive_ad
--> manage_ads action: moderate only after explicit confirmation
-```
+For exact Yandex IDs, discovery checks Reports over the supplied period or, by default, the last 90 completed Moscow calendar days. Reports can expose some campaigns absent from Campaigns API, but it does not guarantee every object or every Master Campaign subtype. A campaign found only there has `access_mode="statistics_only"`, `management_eligibility="not_allowed"`, and a read-only statistics `next_call`. No Reports row means statistics are not observed, not that the account is empty. Reports activity never authorizes management; every configured write still goes through the server write preflight. Do not treat `not_observed` as an incident or call support for it.
 
-`add_adgroups` creates multiple legacy `TEXT_AD_GROUP` groups and must not be used for `UNIFIED_AD_GROUP`. Legacy `add_campaign`, `add_adgroups`, `add_ad`, and `add_ads` are compatibility-only for old text scenarios. If used, say clearly that it is a legacy TEXT_AD path and reread actual ad `Type` after creation.
+For legacy Workspace links, accept a recovered Direct scope only when `get_provider_context` returns the complete `workspace_project_id + connection_id + client_login` in `tool_args`. Read `scope_issues`: run only a read-only `next_action` with `may_execute_automatically=true`; never guess around `manual_scope_review`, ambiguity, conflict, provider outage, or login-not-found. Do not derive `client_login` from `external_entity_key`, a project/account name, `external_entity_name`, or Direct `ClientId`.
+
+## Credential Boundary
+
+- В пользовательских задачах работай с Директом только через LidFly MCP v3. Не вызывай `api.direct.yandex.com` напрямую через shell, curl, PowerShell или другой HTTP-клиент — ни для проверки, ни как fallback после успеха, ошибки или timeout MCP.
+- Не читай `.env`, process environment или shell history и не ищи/используй `YANDEX_DIRECT_TOKEN` либо другие локальные provider credentials.
+- LidFly API key и MCP OAuth авторизуют только LidFly. Они не являются OAuth-токенами Яндекса и не передаются в provider API.
+- Успешный MCP-результат — источник истины, включая пустой результат. Не перепроверяй его прямым HTTP-запросом, не советуй менять локальный токен или перезапускать клиент.
+- Классифицируй Yandex auth error из MCP как `provider_connection` (включая ошибку 53) и предложи переподключить Яндекс в LidFly. Ошибка локального прямого запроса ничего не говорит о server-side подключении LidFly.
+- При transport error/timeout выполни существующий один retry и support workflow; direct provider fallback запрещён. Не повторяй write без проверки состояния.
+- `npm run start:stdio`, `npm run test:direct-live`, `LIVE_YANDEX_DIRECT_TOKEN` и `YANDEX_DIRECT_TOKEN` допустимы только во внутреннем maintainer workflow, который пользователь явно попросил запустить в репозитории. Это не fallback для пользовательской рекламной задачи.
+- Явный запрос разработать отдельную интеграцию с API Яндекса вне LidFly — другая задача с собственными credentials пользователя; никогда не извлекай и не подменяй ими credentials LidFly.
+
+## Progressive References
+
+- For a new ЕПК campaign read [campaign creation](references/campaign-creation-workflow.md).
+- For bidding, goals and learning status read [bidding strategy](references/bidding-strategy.md).
+- For customer bases, Look-alike, geo segments and retargeting by Yandex Audience segments read [audiences](references/audiences.md).
+- `get_methodology(topic: "yandex")` uses the compact [compatibility methodology](references/methodology.md).
 
 ## Guardrails
 
 - Search-first by default; disable networks unless user explicitly asks.
 - Budget values are rubles, not micro-units.
 - Read current state before write.
-- Show write plan and wait for explicit text confirmation.
+- Show the write plan and use the current surface confirmation contract. Built-in chat accepts the next user text or the server-issued action for the same sealed ChangeSet; external MCP requires its explicit textual consent. Never invent a confirmation button.
 - For agency/team Пространства include exact `workspace_project_id`.
 - Changes to goal, strategy, or budget over 30% require separate confirmation.
 - Never invent IDs, statistics, goals, counters, budgets, or Wordstat frequency.
@@ -59,6 +71,17 @@ add_unified_campaign
 - Перед любым кликом, который меняет контент, публикацию, бюджет, ставку, цель, стратегию, статус, модерацию или расход денег, показать точный план и дождаться явного текстового подтверждения. Просьба открыть или проверить страницу не разрешает сохранять изменения.
 - Ничего не сохранять, не публиковать, не запускать и не останавливать автоматически. После подтверждённого действия перечитать состояние в интерфейсе и проверить фактический результат.
 
+## Отменённый переключатель расширенного геотаргетинга
+
+Яндекс отменил настройку `ENABLE_AREA_OF_INTEREST_TARGETING`: [новость от 31.08.2026](https://b2b.yandex.ru/adv/news/obnovlenie-geotargetinga-v-direkte), [справка API](https://yandex.ru/dev/direct/doc/ru/annex/campaign-options). Это касается и ЕПК (`UNIFIED_CAMPAIGN`). Отменён именно переключатель, а не географический таргетинг в целом.
+
+- Не предлагай эту опцию, не включай её в add/update и не повторяй запись полным набором Settings. Не ищи обход через другой тип кампании, API или веб-интерфейс.
+- Если чтение возвращает старое YES/NO, учитывай `campaign_setting_notices`: поле неуправляемое. Не трактуй YES как доказательство действующего переключателя, показов вне региона или перерасхода.
+- Ответь: «К сожалению, отключить расширенный геотаргетинг отдельным переключателем больше нельзя: Яндекс убрал эту настройку и применяет обновлённые алгоритмы автоматически. LidFly не может вернуть отменённую возможность. Можно проверить регионы групп и фактическую географию трафика, но это не гарантирует показы только людям, находящимся в регионе прямо сейчас».
+- При жалобе на прежний success признай: «Предыдущее сообщение об успешном отключении было некорректным: оно не подтверждало изменение настройки». Не скрывай ошибочное подтверждение за ограничением Яндекса и не обещай, что запрет записи выключил таргетинг.
+- Не эскалируй само известное ограничение в поддержку LidFly, не советуй переподключение. Свежий success при попытке записать запрещённую опцию — отдельный дефект контракта, его можно диагностировать штатным support workflow.
+- Регионы групп, минус-фразы, автотаргетинг и корректировки ставок — разные настройки. Их чтение и анализ допустимы; изменение требует отдельного согласованного плана. Не выдавай их за эквивалент отменённого переключателя.
+
 ## Read Checklist
 
 - `get_campaigns` with useful `states` and `field_names`.
@@ -74,3 +97,19 @@ After confirmed work, save decisions, documents, analytics, campaign snapshots, 
 ## Google Export
 
 When the user asks to export a Direct report to Google Sheets or Google Docs, keep this skill for campaign scope and report reads, then hand the verified Google write and reread to `$export-ad-reports`.
+
+The export handoff applies only when this host exposes the skill and a Google write connector. If either is unavailable, state the exact missing capability and return the requested report as a draft; do not claim a saved Google file or silently switch to Workspace.
+
+
+## Проверяемая оптимизация и память
+
+- Перед новой оптимизацией прочитай журнал исполненных действий и решения клиента. Не предлагай повторно выполненную чистку без нового основания; отменённые решения не применяй.
+- В точном выбранном проекте храни `metadata.primary_conversion_goal_id`: числовой ID цели заявки. Если его нет, один раз уточни основную цель, проверь ID через `metrika_get_goals`, затем предложи сохранить в `workspace_update_project`, сохранив остальные поля metadata. Не подменяй ID названием `lead_sent`.
+- Для заявок/CPA вызывай `get_campaign_stats` с `goals=[primary_conversion_goal_id]`. Агрегат без goals описывай как достижения всех целей, включая микроцели. Не добавляй микроцели в стратегию без отдельного согласия и объяснения последствий.
+- Ссылки и факты о компании бери из проверенных страниц, брифа или явных сообщений клиента. Не придумывай URL, партнёрство, опыт, сроки, скидки и гарантии. Неподтверждённые факты явно перечисляй для подтверждения.
+- Утверждать применение или сохранение разрешено только по серверному ledger. Подготовленный пакет не означает, что кабинет или Проекты изменены.
+- Для прогноза CPC/CR/сроков/объёма укажи источник: AuctionBids из `get_keyword_bids`, историю кампании или прогноз бюджета. Без данных обозначь «оценка без данных» и диапазон; не обещай срок заявки. Недельный лимит не равен фиксированному дневному бюджету: деление на семь — арифметическая средняя, не правило расходования площадкой.
+
+### Операторы минус-фраз
+
+По [справке Директа](https://yandex.ru/support/direct/ru/keywords/negative-keywords), проверенной 26.09.2026: минус-фраза исключает запросы со всеми её словами; полное пересечение с ключевой фразой обычно отменяет её действие. `[]` закрепляет порядок, `!` — словоформу, `+` — обязательность слова, кавычки — запрос только из указанных слов. Кавычки действуют и при полном совпадении с ключом. Для одного бренда используй `"битрикс"`, если нужно исключить только запрос из него: `[битрикс]` такого ограничения не задаёт. `![битрикс]` не исправляй догадкой — уточни намерение. Сочетание `серый +в !яблоках` допустимо. Для автотаргетинга не обещай исключение полного пересечения: проверь реальные Query/MatchedKeyword/CriterionType. Предпросмотр без морфологии — только нижняя оценка по прочитанным строкам.
