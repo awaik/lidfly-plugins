@@ -8,6 +8,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   rmdir,
   writeFile,
@@ -134,11 +135,27 @@ function assertSnapshotRelativePath(relativePath) {
   }
 }
 
-async function readSourceFile(sourceRoot, relativePath) {
-  const absolutePath = path.join(sourceRoot, ...relativePath.split("/"));
+// A symlink to a regular file inside the source tree (e.g. CLAUDE.md ->
+// AGENTS.md) is materialized as a regular file with the target's bytes.
+// Links to directories or outside the source tree are rejected.
+export async function readSourceFile(sourceRoot, relativePath) {
+  const linkPath = path.join(sourceRoot, ...relativePath.split("/"));
+  let absolutePath = linkPath;
+  if ((await lstat(linkPath)).isSymbolicLink()) {
+    const realRoot = await realpath(sourceRoot);
+    absolutePath = await realpath(linkPath);
+    const fromRoot = path.relative(realRoot, absolutePath);
+    if (
+      fromRoot === "" ||
+      fromRoot.startsWith("..") ||
+      path.isAbsolute(fromRoot)
+    ) {
+      throw new Error(`${relativePath} links outside the source repository`);
+    }
+  }
   const fileLstat = await lstat(absolutePath);
-  if (!fileLstat.isFile() || fileLstat.isSymbolicLink()) {
-    throw new Error(`${relativePath} must be a regular file, not a symlink`);
+  if (!fileLstat.isFile()) {
+    throw new Error(`${relativePath} must resolve to a regular file`);
   }
   if (fileLstat.size <= 0) throw new Error(`${relativePath} is empty`);
   const bytes = await readFile(absolutePath);
