@@ -5,6 +5,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  symlink,
   unlink,
   writeFile,
 } from "node:fs/promises";
@@ -30,6 +31,7 @@ import {
 import {
   assertSnapshotContainsOnly,
   isIncludedClaudeProjectSourcePath,
+  readSourceFile,
 } from "../../scripts/sync-claude-project.mjs";
 import {
   releaseFilenames,
@@ -228,6 +230,28 @@ describe("plugin bundle contract", () => {
     );
     expect(await readFile(path.join(snapshot, "user-notes.md"), "utf8")).toBe(
       "preserve",
+    );
+  });
+
+  it("materializes in-repository file symlinks and rejects escaping links", async () => {
+    const parent = await mkdtemp(
+      path.join(os.tmpdir(), "lidfly-snapshot-symlink-test-"),
+    );
+    const source = path.join(parent, "source");
+    await mkdir(path.join(source, "docs"), { recursive: true });
+    await writeFile(path.join(source, "AGENTS.md"), "shared instructions");
+    await writeFile(path.join(parent, "outside.md"), "outside");
+    await symlink("AGENTS.md", path.join(source, "CLAUDE.md"));
+    await symlink("../outside.md", path.join(source, "escape.md"));
+    await symlink("docs", path.join(source, "docs-link"));
+
+    const file = await readSourceFile(source, "CLAUDE.md");
+    expect(file.bytes.toString("utf8")).toBe("shared instructions");
+    await expect(readSourceFile(source, "escape.md")).rejects.toThrow(
+      /outside the source repository/u,
+    );
+    await expect(readSourceFile(source, "docs-link")).rejects.toThrow(
+      /regular file/u,
     );
   });
 
