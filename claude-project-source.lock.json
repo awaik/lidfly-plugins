@@ -2,8 +2,8 @@
   "schema_version": 1,
   "source": {
     "repository": "https://github.com/awaik/direct-mcp-ai-project",
-    "commit": "cd4839a6397794227226a0d18f78afc7de7229dc"
+    "commit": "238a422f69e845d2590d73459b3d13a377774fc4"
   },
-  "project_tree_sha256": "ad38bdeabfada60bd16c5ee325c2bfd1029a163338b3eda4fefc9d8791ca908c",
+  "project_tree_sha256": "3e422c9d25c753f30ba90b48edd7addb57c795acda9a632a2ef63651eafefbdd",
   "file_count": 319
 }
