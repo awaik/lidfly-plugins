@@ -48,7 +48,7 @@ const skills = fs
   .map((entry) => entry.name)
   .sort();
 
-assert.equal(skills.length, 26, "unexpected generated skill count");
+assert.equal(skills.length, 27, "unexpected generated skill count");
 
 execFileSync(
   process.execPath,
@@ -67,7 +67,7 @@ const sourceSnapshot = JSON.parse(
   ),
 );
 assert.equal(sourceSnapshot.schema_version, 1);
-assert.equal(sourceSnapshot.skill_count, 26);
+assert.equal(sourceSnapshot.skill_count, 27);
 assert.equal(sourceSnapshot.files.length, sourceSnapshot.file_count);
 assert.match(sourceSnapshot.skills_tree_sha256, /^[a-f0-9]{64}$/);
 assert.deepEqual(
@@ -332,6 +332,13 @@ assert.match(
 const agentsRules = fs.readFileSync(path.join(root, "AGENTS.md"), "utf8");
 const claudeRules = fs.readFileSync(path.join(root, "CLAUDE.md"), "utf8");
 assert.equal(agentsRules, claudeRules, "AGENTS.md and CLAUDE.md must stay synchronized");
+// Codex embeds at most 32 KiB of AGENTS.md (project_doc_max_bytes) and silently drops the rest;
+// the budget is shared with nested AGENTS.md files the user adds, so keep headroom.
+const agentsRulesBytes = Buffer.byteLength(agentsRules, "utf8");
+assert.ok(
+  agentsRulesBytes <= 28 * 1024,
+  `AGENTS.md is ${agentsRulesBytes} bytes; keep it within 28 KiB and move details into skills`,
+);
 assert.match(
   agentsRules,
   /lidfly_get_css[\s\S]*lidfly_update_page_css[\s\S]*lidfly_update_site_css[\s\S]*expected_custom_css_sha256[\s\S]*Не передавай `custom_css` в `lidfly_update_page`[\s\S]*64 KiB/,
@@ -440,7 +447,7 @@ try {
     fs
       .readdirSync(pluginSkills, { withFileTypes: true })
       .filter((entry) => entry.isDirectory()).length,
-    26,
+    27,
     "plugin target must contain all canonical skills",
   );
 
@@ -570,7 +577,8 @@ const directCreationReference = fs.readFileSync(
   path.join(sourceRoot, "yandex-direct-campaign-builder/references/campaign-creation-workflow.md"),
   "utf8",
 );
-assert.match(directCreationReference, /add_adgroup with adgroup_type: UNIFIED_AD_GROUP/);
+assert.match(directCreationReference, /add_adgroup with unified_offer_retargeting/);
+assert.doesNotMatch(directCreationReference, /add_adgroup with adgroup_type/);
 assert.doesNotMatch(
   directCreationReference,
   /add_adgroup\/add_adgroups[\s\S]*UNIFIED_AD_GROUP/,
