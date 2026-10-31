@@ -1,7 +1,7 @@
 {
   "name": "lidfly",
   "version": "1.1.11",
-  "description": "LidFly MCP: Яндекс Директ, Яндекс Метрика (Metrika), Яндекс Вебмастер (Webmaster), Wordstat, VK Ads, Авито и Авито Реклама; сайты, базы знаний, Commerce, Пространства, изображения и распознавание аудио.",
+  "description": "LidFly MCP (https://lidfly.ru/mcp/v3): Яндекс Директ, Яндекс Метрика, Вордстат, Вебмастер, Аудитории, AppMetrica, VK Реклама (VK Ads), ВКонтакте (сообщества), Telegram, мессенджер MAX, Авито и Авито Реклама; сайты, магазины (Commerce), базы знаний, ИИ-консультант, договоры Word, Пространства, изображения, бесплатная расшифровка видео и аудио, статьи для Хабр/VC.ru и YouTube SEO.",
   "author": {
     "name": "LidFly",
     "email": "info@lidfly.ru",
@@ -13,22 +13,33 @@
   "keywords": [
     "lidfly",
     "mcp",
-    "advertising",
-    "analytics",
-    "productivity",
+    "model-context-protocol",
+    "yandex-direct",
     "yandex-metrika",
     "yandex-webmaster",
     "wordstat",
-    "seo",
+    "yandex-audience",
+    "appmetrica",
+    "vk-ads",
+    "vkontakte",
+    "telegram",
+    "max-messenger",
     "avito",
-    "vk-ads"
+    "avito-ads",
+    "seo",
+    "advertising",
+    "analytics",
+    "productivity",
+    "claude",
+    "chatgpt",
+    "codex"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "LidFly",
-    "shortDescription": "Метрика, Вебмастер, реклама и сайты.",
-    "longDescription": "LidFly MCP: Яндекс Директ, Яндекс Метрика (Metrika), Яндекс Вебмастер (Webmaster), Wordstat, VK Ads, Авито и Авито Реклама; сайты, базы знаний, Commerce, Пространства, изображения и распознавание аудио. Ищите инструменты через search_tools. Доступ к данным зависит от подключений и разрешений.",
+    "shortDescription": "Яндекс Директ, Метрика, ВКонтакте, VK Ads, Telegram, MAX, Авито и сайты.",
+    "longDescription": "LidFly MCP (https://lidfly.ru/mcp/v3): Яндекс Директ, Яндекс Метрика (Metrika), Яндекс Вордстат (Wordstat), Яндекс Вебмастер (Webmaster), Яндекс Аудитории, AppMetrica, VK Реклама (VK Ads), сообщества ВКонтакте (vk_social), каналы и группы Telegram, каналы в мессенджере MAX, профиль продавца Авито и Авито Реклама; сайты, интернет-магазины (Commerce), базы знаний, ИИ-консультант, генерация договоров Word, Пространства, изображения, бесплатная расшифровка аудио и видео, статьи для Хабр/VC.ru и YouTube SEO. Ищите инструменты через search_tools. Доступ к данным зависит от подключений и разрешений.",
     "developerName": "LidFly",
     "category": "Data & Analytics",
     "capabilities": [
@@ -43,9 +54,9 @@
     "logo": "./assets/logo.svg",
     "logoDark": "./assets/logo-dark.svg",
     "defaultPrompt": [
-      "Покажи посещаемость моего сайта",
-      "Проверь индексацию моего сайта",
-      "Помоги проанализировать рекламу"
+      "Покажи статистику моих кампаний в Яндекс Директе и VK Ads",
+      "Проверь посещаемость в Метрике и индексацию сайта в Вебмастере",
+      "Подготовь пост для канала в Telegram, MAX и сообщества ВКонтакте"
     ],
     "screenshots": []
   }
