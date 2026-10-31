@@ -1,23 +1,23 @@
 {
   "schema_version": 1,
   "channel": "stable",
-  "published_at": "2026-10-29T16:17:18.000Z",
+  "published_at": "2026-10-31T07:10:59.000Z",
   "min_installer_version": "1.3.0",
   "plugin": {
     "name": "lidfly",
-    "version": "1.1.11"
+    "version": "1.1.12"
   },
   "source": {
     "repository": "https://github.com/awaik/direct-mcp-ai-project",
-    "commit": "fd40bc94b67e65fda038c5b7184dd8d7ba2c10ef",
-    "skills_tree_sha256": "06274e8e5720d61a74080023ffe60e2b0a6b0b37483454d2730e0bd54a794c6c"
+    "commit": "da777b6798a44bcf54bea4c420ed479f3fff2251",
+    "skills_tree_sha256": "1cd71137ff3344fa682b032cf17c5d527959c7e941f154e9200eac90b90e3048"
   },
   "bundle": {
-    "filename": "LidFly_Codex_Plugin_1.1.11_63d64186bd32.tar.gz",
-    "url": "https://lidfly.ru/codex-plugin-content/LidFly_Codex_Plugin_1.1.11_63d64186bd32.tar.gz",
-    "size": 768347,
-    "sha256": "63d64186bd32ec502800f61123b15a6312f6fbbed5d060b26815915b40985980",
-    "signature_filename": "LidFly_Codex_Plugin_1.1.11_63d64186bd32.tar.gz.sig"
+    "filename": "LidFly_Codex_Plugin_1.1.12_62dfa4eee3bd.tar.gz",
+    "url": "https://lidfly.ru/codex-plugin-content/LidFly_Codex_Plugin_1.1.12_62dfa4eee3bd.tar.gz",
+    "size": 796631,
+    "sha256": "62dfa4eee3bd1227d915c7d3271708fba7a6f4a33cff1b6a2ec4caf1c0dada17",
+    "signature_filename": "LidFly_Codex_Plugin_1.1.12_62dfa4eee3bd.tar.gz.sig"
   },
   "key_id": "lidfly-plugin-content-2026-01"
 }
