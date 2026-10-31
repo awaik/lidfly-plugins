@@ -206,6 +206,7 @@ codex plugin marketplace remove lidfly
 ├── scripts/sync-claude-project.mjs           синхронизация снапшота claude-project
 ├── scripts/verify-release-artifacts.mjs      fail-closed проверка релизных файлов
 ├── scripts/manage-release-metadata.mjs       проверка и promotion metadata
+├── server.json                               манифест сервера для каталогов MCP (Official MCP Registry)
 └── LICENSE                                   лицензия MIT
 ```
 
