@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "channel": "stable",
+  "status": "draft",
+  "min_installer_version": "1.2.0",
+  "plugin": {
+    "name": "lidfly",
+    "version": "1.1.15"
+  },
+  "source": {
+    "repository": "https://github.com/awaik/direct-mcp-ai-project",
+    "commit": "926b6c98fea3c3505753c29766a61c582f9c7bc2",
+    "skills_tree_sha256": "a2b18e9a11ff4c945efed7dd6373fd4f5d29d3068953cb87fa428a978defd30b"
+  }
+}
