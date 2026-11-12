@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "channel": "stable",
-  "status": "draft",
-  "min_installer_version": "1.2.0",
+  "published_at": "2026-11-12T08:25:38.000Z",
+  "min_installer_version": "1.3.0",
   "plugin": {
     "name": "lidfly",
     "version": "1.1.17"
@@ -11,5 +11,13 @@
     "repository": "https://github.com/awaik/direct-mcp-ai-project",
     "commit": "c2b7eca2e130a349152d846a38aee5910de86ae7",
     "skills_tree_sha256": "aaa0167980b914b8eaf7c6acd51cee1c9113776509eaf61235ee75f4d0357460"
-  }
+  },
+  "bundle": {
+    "filename": "LidFly_Codex_Plugin_1.1.17_00043056770b.tar.gz",
+    "url": "https://lidfly.ru/codex-plugin-content/LidFly_Codex_Plugin_1.1.17_00043056770b.tar.gz",
+    "size": 887080,
+    "sha256": "00043056770bf6afd3ee2c21b071b68e43376997344317e9e5301273ef75056e",
+    "signature_filename": "LidFly_Codex_Plugin_1.1.17_00043056770b.tar.gz.sig"
+  },
+  "key_id": "lidfly-plugin-content-2026-01"
 }
