@@ -9,9 +9,9 @@
 
 **Яндекс Директ, Яндекс Метрика, Яндекс Вордстат, Яндекс Вебмастер, Яндекс Аудитории, AppMetrica, VK Реклама (VK Ads), сообщества ВКонтакте, каналы и группы Telegram, мессенджер MAX, профиль продавца Авито и Авито Реклама, сайты, интернет-магазины и базы знаний LidFly, ИИ-консультант, договоры Word, бесплатная расшифровка больших видео и аудио, статьи на Хабр / VC.ru и YouTube SEO** — в одном официальном плагине и приложении-установщике **[LidFly](https://lidfly.ru/)** (`https://lidfly.ru/mcp/v3`) для **OpenAI Codex** и **Claude Desktop (Cowork)** (macOS и Windows).
 
-LidFly подключает Codex и Claude Desktop к рекламе, веб-аналитике, SEO, соцсетям, мессенджерам, классифайдам, сайтам и рабочим проектам через единый защищённый MCP-сервер `https://lidfly.ru/mcp/v3` и добавляет **27 специализированных скиллов**. После установки можно просить ИИ проверить статистику, собрать семантику, найти проблемы в кампаниях, опубликовать или запланировать посты в ВКонтакте, Telegram и MAX, разобрать объявления и чаты Авито, превратить длинное видео в статью или подготовить изменения на сайте — без ручного копирования API-ключей в конфигурацию.
+LidFly подключает Codex и Claude Desktop к рекламе, веб-аналитике, SEO, соцсетям, мессенджерам, классифайдам, сайтам и рабочим проектам через единый защищённый MCP-сервер `https://lidfly.ru/mcp/v3` и добавляет **32 специализированных скилла**. После установки можно просить ИИ проверить статистику, собрать семантику, найти проблемы в кампаниях, опубликовать или запланировать посты в ВКонтакте, Telegram и MAX, разобрать объявления и чаты Авито, превратить длинное видео в статью или подготовить изменения на сайте — без ручного копирования API-ключей в конфигурацию.
 
-Плагин устанавливается без терминала через официальное приложение `LidFly Plugin Lapki` для macOS или Windows. Codex CLI остаётся альтернативным способом установки. То же приложение умеет подготовить LidFly для **Claude Desktop**: создаёт рабочую папку-проект для **Claude Cowork** со всеми 27 скиллами и показывает, как подключить MCP-коннектор.
+Плагин устанавливается без терминала через официальное приложение `LidFly Plugin Lapki` для macOS или Windows. Codex CLI остаётся альтернативным способом установки. То же приложение умеет подготовить LidFly для **Claude Desktop**: создаёт рабочую папку-проект для **Claude Cowork** со всеми 32 скиллами и показывает, как подключить MCP-коннектор.
 
 ## Что можно делать
 
@@ -28,16 +28,16 @@ LidFly подключает Codex и Claude Desktop к рекламе, веб-а
 
 Набор возможностей зависит от подключённых кабинетов, прав пользователя и тарифа LidFly. Любые изменения ставок, бюджетов, объявлений, постов или настроек сайта выполняются только после вашего явного подтверждения.
 
-## Встроенные скиллы (27 навыков)
+## Встроенные скиллы (32 навыка)
 
-Плагин включает **27 специализированных скиллов** с проверенными рабочими сценариями, включая диагностику подключения LidFly. Codex и Claude выбирают их автоматически по задаче, поэтому отдельно настраивать или копировать инструкции не нужно:
+Плагин включает **32 специализированных скилла** с проверенными рабочими сценариями, включая диагностику подключения LidFly. Codex и Claude выбирают их автоматически по задаче, поэтому отдельно настраивать или копировать инструкции не нужно:
 
 - **Реклама и классифайды:** `yandex-direct-campaign-builder`, `vk-ads-campaign-builder`, `avito-ads`, `avito-business`;
-- **Соцсети и мессенджеры:** `telegram-posting`, `max-posting` (плюс инструменты сообществ ВКонтакте `vk_social_*`);
+- **Соцсети и мессенджеры:** `vk-social-community`, `telegram-posting`, `max-posting`, `social-post-copy`;
 - **Веб-аналитика, SEO и спрос:** `yandex-metrika`, `yandex-webmaster`, `demand-research`, `semantic-core`, `seo-optimizer`, `serp-monitor`;
-- **Сайты, магазины, базы знаний и Яндекс Бизнес:** `lidfly-site-commerce`, `lidfly-page-migration`, `lidfly-knowledge-maintainer`, `restaurant-yandex`;
+- **Сайты, магазины, базы знаний и Яндекс Бизнес:** `lidfly-site-commerce`, `lidfly-page-migration`, `lidfly-knowledge-maintainer`, `restaurant-yandex`, `yandex-eda`, `yandex-products`;
 - **Видео, YouTube и редактура статей:** `video-article-writer`, `youtube-video-seo`, `article-writer`, `article-reviser`, `human-editorial-polish` (и алиас `ai-markers-remove`);
-- **Память проектов, отчёты и диагностика MCP:** `workspace-project-manager`, `export-ad-reports`, `mcp-v3-provider-context`, `lidfly-connection-doctor`, `lidfly-support-escalation`.
+- **Агенты, память проектов, отчёты и диагностика MCP:** `lidfly-agents`, `workspace-project-manager`, `export-ad-reports`, `mcp-v3-provider-context`, `lidfly-connection-doctor`, `lidfly-support-escalation`.
 
 Если сценарию нужен дополнительный внешний сервис, например подключённый Google Sheets, ИИ-клиент сообщит об этом отдельно.
 
@@ -216,7 +216,7 @@ codex plugin marketplace remove lidfly
 
 ## English Overview: LidFly Plugin & Desktop Installer for OpenAI Codex and Claude Desktop (MCP v3)
 
-**LidFly Plugin Lapki** and the `awaik/lidfly-plugins` marketplace repository provide a one-click desktop installer (macOS universal DMG & Windows x64) and official plugin bundle for **OpenAI Codex** and **Claude Desktop (Cowork)**, connecting them to **LidFly MCP (`https://lidfly.ru/mcp/v3`)** with **27 specialized skills**:
+**LidFly Plugin Lapki** and the `awaik/lidfly-plugins` marketplace repository provide a one-click desktop installer (macOS universal DMG & Windows x64) and official plugin bundle for **OpenAI Codex** and **Claude Desktop (Cowork)**, connecting them to **LidFly MCP (`https://lidfly.ru/mcp/v3`)** with **32 specialized skills**:
 
 - **Yandex Direct MCP, Yandex Metrika MCP, Wordstat MCP, Webmaster MCP, Yandex Audience MCP & AppMetrica MCP:** full campaign lifecycle, web analytics, search demand research, site indexing diagnostics, and CRM audience segments.
 - **VK Ads MCP & VKontakte MCP (`vk_social`):** ad campaigns, lead forms, retargeting, and VKontakte community wall posts, stories, comments moderation, messages, and statistics.
@@ -229,7 +229,7 @@ codex plugin marketplace remove lidfly
 - [LidFly — официальный сайт](https://lidfly.ru)
 - [Установка плагина для Codex](https://lidfly.ru/codex/)
 - [Установка для Claude Desktop (Cowork)](https://lidfly.ru/claude/)
-- [Универсальный шаблон проекта и 27 skills для всех ИИ-клиентов (`awaik/direct-mcp-ai-project`)](https://github.com/awaik/direct-mcp-ai-project)
+- [Универсальный шаблон проекта и 32 skills для всех ИИ-клиентов (`awaik/direct-mcp-ai-project`)](https://github.com/awaik/direct-mcp-ai-project)
 - [Документация возможностей LidFly](https://lidfly.ru/docs)
 - [Общий быстрый старт LidFly](https://lidfly.ru/docs/quickstart)
 - [Политика конфиденциальности](https://lidfly.ru/privacy)

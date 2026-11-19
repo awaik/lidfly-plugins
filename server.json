@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "ru.lidfly/mcp",
-  "description": "LidFly MCP Server & Plugin (RU/EN): Yandex Direct, Yandex Metrika, Wordstat, Webmaster, Audience, AppMetrica, VK Ads, VKontakte communities (vk_social), Telegram channels, MAX Messenger channels, Avito & Avito Ads, LidFly Sites & Commerce, AI Consultant, Word (.docx) documents, free video/audio transcription, and 27 agent skills.",
+  "description": "LidFly MCP Server & Plugin (RU/EN): Yandex Direct, Yandex Metrika, Wordstat, Webmaster, Audience, AppMetrica, VK Ads, VKontakte communities (vk_social), Telegram channels, MAX Messenger channels, Avito & Avito Ads, LidFly Sites & Commerce, AI Consultant, Word (.docx) documents, free video/audio transcription, and 32 agent skills.",
   "repository": {
     "url": "https://github.com/awaik/lidfly-plugins",
     "source": "github"
