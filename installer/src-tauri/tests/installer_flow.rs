@@ -329,6 +329,77 @@ fn claude_project_view_manages_the_user_folder_transactionally() {
 }
 
 #[test]
+fn marketplace_only_update_keeps_an_existing_claude_folder_ready() {
+    let app_data = tempfile::tempdir().expect("create app data");
+    let layout = InstallLayout::claude_project(&app_data.path().join("LidFly"));
+    let old_fixture = fixture("1.1.1");
+    let new_fixture = fixture("1.1.2");
+    let old_marketplace = core(&old_fixture, app_data.path(), "1.2.0");
+    let new_marketplace = core(&new_fixture, app_data.path(), "1.2.1");
+    assert_ne!(
+        old_marketplace.bundle.metadata.plugin_bundle_sha256,
+        new_marketplace.bundle.metadata.plugin_bundle_sha256,
+    );
+    let old = InstallerCore::new(
+        layout.clone(),
+        old_marketplace
+            .bundle
+            .claude_project_view()
+            .expect("old view"),
+        "1.2.0",
+    );
+    old.prepare(false, false, FailPoint::None)
+        .expect("prepare the user folder");
+    let new = InstallerCore::new(
+        layout,
+        new_marketplace
+            .bundle
+            .claude_project_view()
+            .expect("new view"),
+        "1.2.1",
+    );
+
+    let status = new
+        .status_without_creating_root()
+        .expect("classify the folder");
+    assert_eq!(status.phase, InstallerPhase::InstalledBundle);
+    assert!(status.can_open_codex);
+    assert!(!status.update_required);
+    assert!(!status.needs_repair);
+    let outcome = new
+        .prepare(false, false, FailPoint::None)
+        .expect("sync the folder");
+    assert!(outcome.changed_files.is_empty());
+    assert_eq!(
+        outcome.status.installed_plugin_version.as_deref(),
+        Some("1.1.1")
+    );
+}
+
+#[test]
+fn marketplace_version_mismatch_requires_sync_with_unchanged_files() {
+    let app_data = tempfile::tempdir().expect("create app data");
+    let fixture = fixture("1.1.1");
+    let mut core = core(&fixture, app_data.path(), "1.2.0");
+    core.prepare(false, false, FailPoint::None)
+        .expect("prepare the marketplace");
+    core.bundle.metadata.plugin_version = "1.1.2".to_owned();
+
+    let status = core.status().expect("classify the marketplace");
+    assert!(status.update_required);
+    assert!(!status.can_open_codex);
+    let outcome = core
+        .prepare(false, false, FailPoint::None)
+        .expect("sync the marketplace");
+    assert!(outcome.changed_files.is_empty());
+    assert!(outcome.status.can_open_codex);
+    assert_eq!(
+        outcome.status.installed_plugin_version.as_deref(),
+        Some("1.1.2")
+    );
+}
+
+#[test]
 fn remote_verified_bundle_uses_transactional_core_and_persists_provenance() {
     let app_data = tempfile::tempdir().expect("create app data");
     let fixture = fixture("1.1.1");

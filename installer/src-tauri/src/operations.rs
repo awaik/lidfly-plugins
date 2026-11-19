@@ -34,6 +34,7 @@ pub struct InstallLayout {
     installed_state: PathBuf,
     managed_state: PathBuf,
     allowed_path: fn(&str) -> bool,
+    track_plugin_version: bool,
 }
 
 impl InstallLayout {
@@ -47,6 +48,7 @@ impl InstallLayout {
             marketplace_root,
             control_root,
             allowed_path: is_allowed_bundle_path,
+            track_plugin_version: true,
         }
     }
 
@@ -63,6 +65,7 @@ impl InstallLayout {
             marketplace_root,
             control_root,
             allowed_path: is_safe_claude_project_source_path,
+            track_plugin_version: false,
         }
     }
 }
@@ -404,12 +407,13 @@ impl InstallerCore {
         let installed_version = state
             .as_ref()
             .map(|installed| installed.plugin_version.clone());
-        let state_matches = state.as_ref().is_some_and(|installed| {
-            installed.plugin_version == self.bundle.metadata.plugin_version
-                && installed.plugin_bundle_sha256 == self.bundle.metadata.plugin_bundle_sha256
+        let contents_match = state.as_ref().is_some_and(|installed| {
+            installed.plugin_bundle_sha256 == self.bundle.metadata.plugin_bundle_sha256
                 && installed.managed_files == self.bundle.metadata.files
-                && state_consistent
         });
+        let version_matches = !self.layout.track_plugin_version
+            || installed_version.as_deref() == Some(self.bundle.metadata.plugin_version.as_str());
+        let state_matches = state_consistent && contents_match && version_matches;
         let any_present = files
             .iter()
             .any(|file| file.condition != FileCondition::Missing);
@@ -430,10 +434,8 @@ impl InstallerCore {
         let embedded_semver = Version::parse(&self.bundle.metadata.plugin_version).ok();
         let downgrade_detected =
             matches!((installed_semver, embedded_semver), (Some(a), Some(b)) if a > b);
-        let update_required = state.as_ref().is_some_and(|installed| {
-            installed.plugin_bundle_sha256 != self.bundle.metadata.plugin_bundle_sha256
-                || installed.managed_files != self.bundle.metadata.files
-        });
+        let update_required =
+            state.is_some() && (!contents_match || !version_matches && !downgrade_detected);
         let can_open_codex = all_current && state_matches;
 
         Ok(Classification {

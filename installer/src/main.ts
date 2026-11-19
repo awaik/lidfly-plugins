@@ -6,6 +6,10 @@ import {
   type Update,
 } from "@tauri-apps/plugin-updater";
 
+import claudeUrl from "./assets/brand-claude.svg";
+import codexUrl from "./assets/brand-codex.svg";
+import lapkaUrl from "./assets/lapka.svg";
+import { icon, iconSvg } from "./icons";
 import "./styles.css";
 import type {
   BundleSyncOutcome,
@@ -30,69 +34,71 @@ if (!app) throw new Error("App root is missing");
 app.innerHTML = `
   <main class="shell">
     <header class="brand">
-      <div class="brand-mark" aria-hidden="true"><span>L</span></div>
-      <div>
-        <div class="eyebrow">Официальное приложение LidFly</div>
+      <div class="app-mark" aria-hidden="true">
+        <img src="${lapkaUrl}" width="37" height="34" alt="" />
+      </div>
+      <div class="brand-title">
+        <div class="overline overline-brand">Официальное приложение LidFly</div>
         <h1>LidFly Plugin Lapki</h1>
       </div>
       <div id="version" class="version"></div>
     </header>
 
     <section id="update-panel" class="update-panel" aria-live="polite" hidden>
-      <div class="update-symbol" aria-hidden="true">↻</div>
+      ${icon("refresh-cw", "update-icon")}
       <div class="update-copy">
-        <div class="eyebrow">Обновление приложения</div>
         <h2 id="update-title">Вышла новая версия LidFly Plugin Lapki</h2>
         <p id="update-message">
           Установите обновление, чтобы получить последние улучшения. Ваши настройки сохранятся.
         </p>
         <progress id="update-progress" class="update-progress" hidden></progress>
       </div>
-      <button id="install-update" class="button button-update">
+      <button id="install-update" class="button button-m button-primary">
         Обновить приложение
       </button>
     </section>
 
     <section class="product-card" aria-labelledby="codex-heading" aria-live="polite">
       <div class="card-heading">
-        <div class="product-icon codex-icon" aria-hidden="true">C</div>
-        <div>
-          <div class="eyebrow">Codex</div>
+        <div class="product-icon" aria-hidden="true">
+          <img src="${codexUrl}" width="24" height="24" alt="" />
+        </div>
+        <div class="card-heading-copy">
+          <div class="overline">Codex</div>
           <h2 id="codex-heading">Установка плагина в Codex</h2>
           <p>Установите LidFly без терминала, затем подтвердите установку в Codex.</p>
         </div>
       </div>
 
-      <div class="status-summary">
-        <span id="status-dot" class="status-dot is-loading"></span>
-        <div>
+      <div class="status-summary" data-status="loading">
+        <span id="status-icon" class="icon status-icon is-loading" aria-hidden="true"></span>
+        <div class="status-copy">
           <h3 id="status-title">Проверяем установку…</h3>
           <p id="status-message">Это займёт несколько секунд.</p>
         </div>
       </div>
 
       <section id="plugin-update-panel" class="plugin-update-panel" aria-live="polite" hidden>
-        <div class="update-symbol" aria-hidden="true">↓</div>
+        <span id="plugin-update-icon" class="icon update-icon" aria-hidden="true">${iconSvg("download")}</span>
         <div class="update-copy">
-          <div class="eyebrow">Обновление плагина для Codex</div>
           <h3 id="plugin-update-title">Доступна новая версия плагина</h3>
           <p id="plugin-update-message">Обновление займёт несколько секунд.</p>
           <progress id="plugin-update-progress" class="update-progress" hidden></progress>
         </div>
-        <button id="install-plugin-update" class="button button-light">
+        <button id="install-plugin-update" class="button button-m button-tinted">
           Обновить плагин
         </button>
       </section>
 
       <section id="codex-update-panel" class="codex-update-panel" aria-live="polite" hidden>
-        <div>
-          <div class="eyebrow">Остался один шаг</div>
+        <div class="codex-update-copy">
+          <div class="overline">Остался один шаг</div>
           <h3 id="codex-update-title">Новая версия плагина готова</h3>
           <p id="codex-update-message">
             Подтвердите обновление в Codex, затем начните новый чат.
           </p>
         </div>
-        <button id="finish-update" class="button button-dark">
+        <button id="finish-update" class="button button-m button-primary">
           Открыть Codex
         </button>
       </section>
@@ -101,60 +107,72 @@ app.innerHTML = `
       <div id="details" class="details" hidden></div>
       <div class="primary-actions">
         <button id="prepare" class="button button-primary">Начать установку</button>
-        <button id="open-codex" class="button button-dark" disabled>Продолжить в Codex</button>
-        <button id="repair" class="button button-warning" hidden>Восстановить</button>
+        <button id="open-codex" class="button button-primary" disabled>
+          Продолжить в Codex ${icon("arrow-right")}
+        </button>
+        <button id="repair" class="button button-gray" hidden>Восстановить</button>
       </div>
     </section>
 
     <section class="product-card" aria-labelledby="claude-heading" aria-live="polite">
       <div class="card-heading">
-        <div class="product-icon claude-icon" aria-hidden="true">A</div>
-        <div>
-          <div class="eyebrow">Claude Desktop · Cowork</div>
+        <div class="product-icon" aria-hidden="true">
+          <img src="${claudeUrl}" width="24" height="24" alt="" />
+        </div>
+        <div class="card-heading-copy">
+          <div class="overline">Claude Desktop · Cowork</div>
           <h2 id="claude-heading">Установка для Claude Desktop</h2>
           <p>Выполните три шага по порядку. Приложение подскажет, что нажимать.</p>
         </div>
       </div>
 
       <ol class="setup-steps">
-        <li class="setup-step">
-          <span class="step-number">1</span>
+        <li id="claude-step-folder" class="setup-step" data-state="current">
+          <span class="step-number" aria-hidden="true">
+            <span class="step-index">1</span>${icon("check")}
+          </span>
           <div class="step-content">
             <h3>Установите папку со скиллами на диск</h3>
             <div class="step-status">
-              <span id="claude-dot" class="status-dot is-loading"></span>
+              <span id="claude-icon" class="icon status-icon is-loading" aria-hidden="true"></span>
               <div>
                 <strong id="claude-title">Проверяем папку LidFly…</strong>
                 <p id="claude-message">Это займёт несколько секунд.</p>
               </div>
             </div>
             <div id="claude-folder" class="folder-path" hidden>
-              Папка: <code id="claude-folder-path"></code>
+              ${icon("folder")}<code id="claude-folder-path"></code>
             </div>
             <div class="step-actions">
-              <button id="claude-prepare" class="button button-primary">Установить папку</button>
-              <button id="claude-repair" class="button button-warning" hidden>Восстановить папку</button>
+              <button id="claude-prepare" class="button button-m button-primary">Установить папку</button>
+              <button id="claude-repair" class="button button-m button-gray" hidden>Восстановить папку</button>
             </div>
           </div>
         </li>
-        <li class="setup-step">
-          <span class="step-number">2</span>
+        <li id="claude-step-connector" class="setup-step" data-state="pending">
+          <span class="step-number" aria-hidden="true">
+            <span class="step-index">2</span>${icon("check")}
+          </span>
           <div class="step-content">
             <h3>Подключите MCP в Claude Desktop</h3>
             <p>Откройте Settings → Connectors → «Add custom connector», вставьте адрес и войдите в LidFly по email.</p>
             <div class="mcp-row">
               <code id="claude-mcp-url">https://lidfly.ru/mcp/v3</code>
-              <button id="copy-mcp" class="button button-secondary">Скопировать адрес</button>
+              <button id="copy-mcp" class="button button-m button-primary">Скопировать адрес</button>
             </div>
           </div>
         </li>
-        <li class="setup-step">
-          <span class="step-number">3</span>
+        <li id="claude-step-project" class="setup-step" data-state="pending">
+          <span class="step-number" aria-hidden="true">
+            <span class="step-index">3</span>${icon("check")}
+          </span>
           <div class="step-content">
             <h3>Добавьте папку LidFly как проект</h3>
             <p>Нажмите кнопку ниже. В Claude подтвердите открытие папки LidFly в Cowork.</p>
             <div class="step-actions">
-              <button id="claude-open" class="button button-dark" disabled>Открыть в Claude</button>
+              <button id="claude-open" class="button button-m button-outline" disabled>
+                Открыть в Claude ${icon("arrow-right")}
+              </button>
             </div>
           </div>
         </li>
@@ -162,7 +180,7 @@ app.innerHTML = `
 
       <div id="claude-notice" class="notice" hidden></div>
       <div class="secondary-actions">
-        <button id="claude-remove" class="button button-ghost" disabled>Удалить файлы LidFly</button>
+        <button id="claude-remove" class="button button-ghost-danger" disabled>Удалить файлы LidFly</button>
       </div>
       <p class="claude-fineprint">
         Папка LidFly остаётся на компьютере и нужна для работы — не удаляйте и не переносите её.
@@ -172,10 +190,10 @@ app.innerHTML = `
     </section>
 
     <section class="tools" aria-label="Дополнительные действия">
-      <button id="verify" class="tool-button"><span>✓</span><b>Проверить файлы</b><small>Сверить SHA-256</small></button>
-      <button id="update" class="tool-button"><span>↻</span><b>Проверить обновления</b><small id="update-caption">Версия приложения</small></button>
-      <button id="logs" class="tool-button"><span>≡</span><b>Открыть журнал</b><small>Без токенов и email</small></button>
-      <button id="remove" class="tool-button tool-danger"><span>×</span><b>Удалить файлы</b><small>Codex не изменяется</small></button>
+      <button id="verify" class="tool-button">${icon("shield-check")}<b>Проверить файлы</b><small>Сверить SHA-256</small></button>
+      <button id="update" class="tool-button">${icon("refresh-cw")}<b>Проверить обновления</b><small id="update-caption">Версия приложения</small></button>
+      <button id="logs" class="tool-button">${icon("file-text")}<b>Открыть журнал</b><small>Без токенов и email</small></button>
+      <button id="remove" class="tool-button tool-danger">${icon("trash")}<b>Удалить файлы</b><small>Codex не изменяется</small></button>
     </section>
 
     <footer>
@@ -187,7 +205,7 @@ app.innerHTML = `
 
 const elements = {
   version: required("version"),
-  statusDot: required("status-dot"),
+  statusIcon: required("status-icon"),
   statusTitle: required("status-title"),
   statusMessage: required("status-message"),
   notice: required("notice"),
@@ -198,6 +216,7 @@ const elements = {
   updateProgress: requiredProgress("update-progress"),
   installUpdate: requiredButton("install-update"),
   pluginUpdatePanel: required("plugin-update-panel"),
+  pluginUpdateIcon: required("plugin-update-icon"),
   pluginUpdateTitle: required("plugin-update-title"),
   pluginUpdateMessage: required("plugin-update-message"),
   pluginUpdateProgress: requiredProgress("plugin-update-progress"),
@@ -214,7 +233,10 @@ const elements = {
   updateCaption: required("update-caption"),
   logs: requiredButton("logs"),
   remove: requiredButton("remove"),
-  claudeDot: required("claude-dot"),
+  claudeIcon: required("claude-icon"),
+  claudeStepFolder: required("claude-step-folder"),
+  claudeStepConnector: required("claude-step-connector"),
+  claudeStepProject: required("claude-step-project"),
   claudeTitle: required("claude-title"),
   claudeMessage: required("claude-message"),
   claudeFolder: required("claude-folder"),
@@ -306,7 +328,31 @@ function setBusy(value: boolean): void {
       (button === elements.claudeRemove &&
         claudeStatus?.status.phase === "not_prepared");
   }
-  document.body.classList.toggle("is-busy", value);
+}
+
+type StatusKind = "idle" | "loading" | "success" | "warning" | "error";
+
+const STATUS_ICONS: Record<StatusKind, string> = {
+  idle: "",
+  loading: iconSvg("loader-circle"),
+  success: iconSvg("check"),
+  warning: iconSvg("triangle-alert"),
+  error: iconSvg("triangle-alert"),
+};
+
+function setStatusIndicator(indicator: HTMLElement, kind: StatusKind): void {
+  indicator.className = `icon status-icon is-${kind}`;
+  indicator.innerHTML = STATUS_ICONS[kind];
+  const summary = indicator.closest<HTMLElement>(".status-summary");
+  if (summary) summary.dataset.status = kind;
+}
+
+function renderClaudeSteps(folderReady: boolean): void {
+  elements.claudeStepFolder.dataset.state = folderReady ? "done" : "current";
+  elements.claudeStepConnector.dataset.state = folderReady
+    ? "current"
+    : "pending";
+  elements.claudeStepProject.dataset.state = "pending";
 }
 
 function resetUpdateTool(): void {
@@ -319,6 +365,9 @@ function resetUpdateTool(): void {
 
 function renderPluginContentStatus(status: PluginContentUpdateStatus): void {
   pluginContentStatus = status;
+  elements.pluginUpdatePanel.classList.remove("is-downloading");
+  elements.pluginUpdateIcon.innerHTML = iconSvg("download");
+  elements.pluginUpdateProgress.hidden = true;
   const release = status.release;
   if (status.state === "up_to_date" || !release) {
     elements.pluginUpdatePanel.hidden = true;
@@ -326,8 +375,6 @@ function renderPluginContentStatus(status: PluginContentUpdateStatus): void {
     return;
   }
   elements.pluginUpdatePanel.hidden = false;
-  elements.pluginUpdatePanel.classList.remove("is-downloading");
-  elements.pluginUpdateProgress.hidden = true;
   elements.pluginUpdateTitle.textContent =
     status.state === "requires_installer_update"
       ? "Сначала обновите приложение"
@@ -433,10 +480,12 @@ function renderStatus(status: InstallerStatus): void {
   currentStatus = status;
   elements.version.textContent = `v${status.appVersion}`;
   if (!availableUpdate) resetUpdateTool();
-  elements.statusDot.className = "status-dot";
+  const prepareLabel = status.updateRequired
+    ? "Обновить файлы плагина"
+    : "Начать установку";
   const statusCopy: Record<
     InstallerStatus["phase"],
-    readonly [string, string, string]
+    readonly [string, string, StatusKind]
   > = {
     not_prepared: [
       "Плагин ещё не установлен",
@@ -460,19 +509,17 @@ function renderStatus(status: InstallerStatus): void {
     ],
     incomplete_state: [
       "Установка не завершена",
-      "Предыдущая рабочая версия сохранена. Нажмите «Восстановить», чтобы продолжить.",
+      `Нажмите «${status.needsRepair ? elements.repair.textContent : prepareLabel}», чтобы продолжить.`,
       "warning",
     ],
   };
   const copy = statusCopy[status.phase];
   elements.statusTitle.textContent = copy[0];
   elements.statusMessage.textContent = copy[1];
-  elements.statusDot.classList.add(`is-${copy[2]}`);
+  setStatusIndicator(elements.statusIcon, copy[2]);
   elements.openCodex.disabled = busy || !status.canOpenCodex;
   elements.prepare.hidden = status.canOpenCodex && !status.updateRequired;
-  elements.prepare.textContent = status.updateRequired
-    ? "Обновить файлы плагина"
-    : "Начать установку";
+  elements.prepare.textContent = prepareLabel;
   elements.repair.hidden = !status.needsRepair;
   elements.remove.disabled = busy || status.phase === "not_prepared";
   renderDetails(status);
@@ -503,10 +550,12 @@ function renderClaudeStatus(payload: ClaudeProjectStatusPayload): void {
   elements.claudeMcpUrl.textContent = payload.mcpUrl;
   elements.claudeFolder.hidden = false;
   elements.claudeFolderPath.textContent = payload.folderPath;
-  elements.claudeDot.className = "status-dot";
+  const prepareLabel = status.updateRequired
+    ? "Обновить папку LidFly"
+    : "Установить папку";
   const statusCopy: Record<
     InstallerStatus["phase"],
-    readonly [string, string, string]
+    readonly [string, string, StatusKind]
   > = {
     not_prepared: [
       "Папка ещё не установлена",
@@ -530,20 +579,23 @@ function renderClaudeStatus(payload: ClaudeProjectStatusPayload): void {
     ],
     incomplete_state: [
       "Установка папки не завершена",
-      "Нажмите «Восстановить папку», чтобы безопасно завершить установку.",
+      `Нажмите «${status.needsRepair ? elements.claudeRepair.textContent : prepareLabel}», чтобы продолжить.`,
       "warning",
     ],
   };
   const copy = statusCopy[status.phase];
   elements.claudeTitle.textContent = copy[0];
   elements.claudeMessage.textContent = copy[1];
-  elements.claudeDot.classList.add(`is-${copy[2]}`);
+  setStatusIndicator(elements.claudeIcon, copy[2]);
+  renderClaudeSteps(status.canOpenCodex && !status.needsRepair);
   elements.claudeOpen.disabled = busy || !status.canOpenCodex;
   elements.claudePrepare.hidden = status.canOpenCodex && !status.updateRequired;
-  elements.claudePrepare.textContent = status.updateRequired
-    ? "Обновить папку LidFly"
-    : "Установить папку";
+  elements.claudePrepare.textContent = prepareLabel;
   elements.claudeRepair.hidden = !status.needsRepair;
+  const folderActions = elements.claudePrepare.parentElement;
+  if (folderActions)
+    folderActions.hidden =
+      elements.claudePrepare.hidden && elements.claudeRepair.hidden;
   elements.claudeRemove.disabled = busy || status.phase === "not_prepared";
 }
 
@@ -913,6 +965,7 @@ async function installPluginContentUpdate(): Promise<void> {
   if (busy || pluginContentStatus?.state !== "available") return;
   clearNotice();
   setBusy(true);
+  elements.pluginUpdateIcon.innerHTML = iconSvg("loader-circle");
   elements.pluginUpdatePanel.classList.add("is-downloading");
   elements.pluginUpdateProgress.hidden = false;
   elements.pluginUpdateProgress.removeAttribute("value");
@@ -950,7 +1003,7 @@ async function installPluginContentUpdate(): Promise<void> {
     elements.pluginUpdatePanel.hidden = true;
     showCodexUpdateReady(outcome.release.pluginVersion, outcome.codexOpened);
     await refreshClaudeStatus().catch(() => undefined);
-    if (outcome.claudeOperation) {
+    if (outcome.claudeOperation?.changedFiles.length) {
       showClaudeNotice(
         "Папка LidFly обновлена вместе с плагином. Ваши документы не изменялись.",
       );
@@ -1027,6 +1080,8 @@ async function installAvailableUpdate(update: Update): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
+  setStatusIndicator(elements.statusIcon, "loading");
+  setStatusIndicator(elements.claudeIcon, "loading");
   setBusy(true);
   let synced: BundleSyncOutcome | null = null;
   try {
@@ -1046,7 +1101,7 @@ async function initialize(): Promise<void> {
     elements.statusTitle.textContent =
       "Операция не выполнена, предыдущая версия сохранена";
     elements.statusMessage.textContent = clientError.message;
-    elements.statusDot.className = "status-dot is-error";
+    setStatusIndicator(elements.statusIcon, "error");
     showNotice(clientError.message, "error");
   } finally {
     setBusy(false);
@@ -1066,7 +1121,7 @@ async function initialize(): Promise<void> {
   } catch (error) {
     elements.claudeTitle.textContent = "Не удалось проверить папку LidFly";
     elements.claudeMessage.textContent = asClientError(error).message;
-    elements.claudeDot.className = "status-dot is-error";
+    setStatusIndicator(elements.claudeIcon, "error");
   }
   if (synced?.marketplace) await openCodex(true);
   void requestAllUpdateChecks(false);

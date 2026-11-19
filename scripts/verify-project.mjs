@@ -6,16 +6,14 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import { inspectSourceBundle } from "./lib/plugin-bundle.mjs";
+import { verifyTauriBundleAssets } from "./lib/tauri-bundle.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const execFileAsync = promisify(execFile);
 const inspected = await inspectSourceBundle(root);
-const tauriConfig = JSON.parse(
-  await readFile(
-    path.join(root, "installer/src-tauri/tauri.conf.json"),
-    "utf8",
-  ),
-);
+const tauriConfigPath = path.join(root, "installer/src-tauri/tauri.conf.json");
+const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
+await verifyTauriBundleAssets(tauriConfigPath, tauriConfig.bundle);
 const marketplaceEntry = inspected.documents.marketplace.plugins[0];
 const pluginRoot = path.resolve(root, marketplaceEntry.source.path);
 const pluginRootReal = await realpath(pluginRoot);

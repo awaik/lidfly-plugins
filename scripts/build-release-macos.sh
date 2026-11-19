@@ -99,17 +99,25 @@ npx tauri signer sign "$UPDATER_OUTPUT"
 DMG_SOURCE="$RELEASE_TEMP_DIR/dmg-source"
 mkdir -p "$DMG_SOURCE"
 ditto "$APP_PATH" "$DMG_SOURCE/$APP_NAME"
-"$DMG_BUNDLE_DIR/bundle_dmg.sh" \
+node --input-type=module - "$INSTALLER_ROOT/src-tauri/tauri.conf.json" \
+  "$DMG_BUNDLE_DIR/bundle_dmg.sh" "$APP_NAME" \
   --volname "LidFly Plugin Lapki" \
   --volicon "$DMG_BUNDLE_DIR/icon.icns" \
-  --window-size 660 400 \
   --icon-size 128 \
-  --icon "$APP_NAME" 180 170 \
   --hide-extension "$APP_NAME" \
-  --app-drop-link 480 170 \
   --codesign "$APPLE_SIGNING_IDENTITY" \
   --notarize "$NOTARYTOOL_PROFILE" \
-  "$DMG_OUTPUT" "$DMG_SOURCE"
+  "$DMG_OUTPUT" "$DMG_SOURCE" <<'NODE'
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { macosDmgLayoutArgs } from "../scripts/lib/tauri-bundle.mjs";
+
+const [configPath, bundler, appName, ...args] = process.argv.slice(2);
+const { bundle } = JSON.parse(readFileSync(configPath, "utf8"));
+execFileSync(bundler, [...macosDmgLayoutArgs(configPath, bundle.macOS.dmg, appName), ...args], {
+  stdio: "inherit",
+});
+NODE
 
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 codesign --verify --strict --verbose=2 "$DMG_OUTPUT"

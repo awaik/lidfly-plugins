@@ -46,12 +46,21 @@
     "macOS": {
       "minimumSystemVersion": "10.15",
       "entitlements": "./Entitlements.plist",
-      "hardenedRuntime": true
+      "hardenedRuntime": true,
+      "dmg": {
+        "background": "installer-assets/dmg-background.tiff",
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 210 },
+        "applicationFolderPosition": { "x": 480, "y": 210 }
+      }
     },
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer-assets/nsis-header.bmp",
+        "sidebarImage": "installer-assets/nsis-sidebar.bmp"
       }
     }
   },
