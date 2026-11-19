@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "installer": {
     "name": "LidFly Plugin Lapki",
-    "version": "1.4.0"
+    "version": "1.5.0"
   },
   "embeddedPlugin": {
     "name": "lidfly",
-    "version": "1.1.1",
+    "version": "1.1.21",
     "manifestPath": "./plugins/lidfly/.codex-plugin/plugin.json",
     "mcpUrl": "https://lidfly.ru/mcp/v3"
   },
@@ -18,26 +18,26 @@
   },
   "publication": {
     "status": "published",
-    "tag": "installer-v1.4.0",
-    "commit": "9716400997a46149941b1bfef7fa389e1904e221",
-    "publishedAt": "2026-08-11T13:58:03Z"
+    "tag": "installer-v1.5.0",
+    "commit": "a5ce7203b8e87268c124a5ced7b0466424773dc5",
+    "publishedAt": "2026-11-19T07:36:56Z"
   },
   "installers": {
     "status": "published",
     "artifacts": [
       {
         "platform": "macos-universal",
-        "filename": "LidFly.Plugin.Lapki_1.4.0_universal.dmg",
-        "url": "https://github.com/awaik/lidfly-plugins/releases/download/installer-v1.4.0/LidFly.Plugin.Lapki_1.4.0_universal.dmg",
-        "size": 7920639,
-        "sha256": "eeb8bd0e855a91c80512f5d9d994ee8fdc8a58ddf3876bff39e70092ea7a6702"
+        "filename": "LidFly.Plugin.Lapki_1.5.0_universal.dmg",
+        "url": "https://github.com/awaik/lidfly-plugins/releases/download/installer-v1.5.0/LidFly.Plugin.Lapki_1.5.0_universal.dmg",
+        "size": 9564268,
+        "sha256": "287b0f6f89a68d4849eeaf1b4d99d0c0e288ce0d6d72e87b2657b8732e125d9e"
       },
       {
         "platform": "windows-x86_64",
-        "filename": "LidFly.Plugin.Lapki_1.4.0_x64-setup.exe",
-        "url": "https://github.com/awaik/lidfly-plugins/releases/download/installer-v1.4.0/LidFly.Plugin.Lapki_1.4.0_x64-setup.exe",
-        "size": 2725268,
-        "sha256": "36421aa497e37ae94dbb76a4bbf1b032269a10fcc337cd58de38e954c6f32841"
+        "filename": "LidFly.Plugin.Lapki_1.5.0_x64-setup.exe",
+        "url": "https://github.com/awaik/lidfly-plugins/releases/download/installer-v1.5.0/LidFly.Plugin.Lapki_1.5.0_x64-setup.exe",
+        "size": 3026718,
+        "sha256": "ee117f86c47fa51b5a489f9b9353e0d4a63f837319e6d5276709190c8ad9f81e"
       }
     ]
   }
