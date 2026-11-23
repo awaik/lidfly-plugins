@@ -1,6 +1,6 @@
 [package]
 name = "lidfly-codex-plugin-installer"
-version = "1.5.0"
+version = "1.5.1"
 description = "LidFly marketplace installer for Codex"
 authors = ["LidFly"]
 license = "MIT"
@@ -40,6 +40,12 @@ thiserror = "2"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation-sys = "0.8"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

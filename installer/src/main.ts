@@ -103,6 +103,23 @@ app.innerHTML = `
         </button>
       </section>
 
+      <section id="codex-missing-panel" class="codex-update-panel codex-missing-panel" aria-live="polite" hidden>
+        <div class="codex-update-copy">
+          <div class="overline">Сначала нужен Codex</div>
+          <h3>Codex не установлен</h3>
+          <p>
+            На этом компьютере нет приложения Codex, поэтому ссылка на плагин не откроется.
+            Установите Codex, войдите в него, затем снова нажмите «Продолжить в Codex».
+          </p>
+          <button id="force-open-codex" class="text-button" type="button">
+            Codex уже установлен? Всё равно открыть
+          </button>
+        </div>
+        <button id="install-codex" class="button button-m button-primary">
+          Установить Codex
+        </button>
+      </section>
+
       <div id="notice" class="notice" hidden></div>
       <div id="details" class="details" hidden></div>
       <div class="primary-actions">
@@ -225,6 +242,9 @@ const elements = {
   codexUpdateTitle: required("codex-update-title"),
   codexUpdateMessage: required("codex-update-message"),
   finishUpdate: requiredButton("finish-update"),
+  codexMissingPanel: required("codex-missing-panel"),
+  installCodex: requiredButton("install-codex"),
+  forceOpenCodex: requiredButton("force-open-codex"),
   prepare: requiredButton("prepare"),
   openCodex: requiredButton("open-codex"),
   repair: requiredButton("repair"),
@@ -312,6 +332,8 @@ function setBusy(value: boolean): void {
     elements.installUpdate,
     elements.installPluginUpdate,
     elements.finishUpdate,
+    elements.installCodex,
+    elements.forceOpenCodex,
     elements.verify,
     elements.update,
     elements.logs,
@@ -841,12 +863,29 @@ elements.finishUpdate.addEventListener("click", () => {
   void openCodex(true);
 });
 
-async function openCodex(forUpdate: boolean): Promise<boolean> {
+elements.installCodex.addEventListener("click", () => {
+  if (busy) return;
+  clearNotice();
+  void invoke("open_codex_download").catch((error: unknown) =>
+    showNotice(asClientError(error).message, "error"),
+  );
+});
+
+// Запасной путь на случай, если проверка обработчика codex:// ошиблась.
+elements.forceOpenCodex.addEventListener("click", () => {
+  void openCodex(!elements.codexUpdatePanel.hidden, true);
+});
+
+async function openCodex(
+  forUpdate: boolean,
+  skipHandlerCheck = false,
+): Promise<boolean> {
   if (busy) return false;
   clearNotice();
   setBusy(true);
   try {
-    await invoke<string>("open_in_codex");
+    await invoke<string>("open_in_codex", { skipHandlerCheck });
+    elements.codexMissingPanel.hidden = true;
     if (forUpdate && currentStatus)
       showCodexUpdateReady(currentStatus.embeddedPluginVersion, true);
     showNotice(
@@ -856,7 +895,12 @@ async function openCodex(forUpdate: boolean): Promise<boolean> {
     );
     return true;
   } catch (error) {
-    showNotice(asClientError(error).message, "error");
+    const clientError = asClientError(error);
+    if (clientError.code === "codex_not_installed") {
+      elements.codexMissingPanel.hidden = false;
+    } else {
+      showNotice(clientError.message, "error");
+    }
     return false;
   } finally {
     setBusy(false);

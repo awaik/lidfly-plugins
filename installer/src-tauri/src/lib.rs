@@ -5,6 +5,7 @@ pub mod content_update;
 pub mod models;
 pub mod operations;
 pub mod state;
+pub mod url_handler;
 
 use std::path::PathBuf;
 
@@ -25,6 +26,7 @@ const CLAUDE_DEFAULT_PROMPT: &str =
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
+use url_handler::{url_scheme_handler, HandlerStatus};
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, ClientError> {
     app.path().app_data_dir().map_err(|error| {
@@ -245,13 +247,19 @@ fn remove_prepared_files(app: AppHandle) -> Result<OperationOutcome, ClientError
 }
 
 #[tauri::command]
-fn open_in_codex(app: AppHandle) -> Result<String, ClientError> {
+fn open_in_codex(app: AppHandle, skip_handler_check: bool) -> Result<String, ClientError> {
     let core = installer_core(&app)?;
     let status = core.status()?;
     if !status.can_open_codex {
         return Err(ClientError::new(
             "plugin_not_ready",
             "Сначала подготовьте и проверьте файлы плагина.",
+        ));
+    }
+    if !skip_handler_check && url_scheme_handler("codex") == HandlerStatus::Missing {
+        return Err(ClientError::new(
+            "codex_not_installed",
+            "Codex не установлен на этом компьютере.",
         ));
     }
     let uri = build_codex_plugin_uri(&core.layout.marketplace_manifest)?;
@@ -264,6 +272,27 @@ fn open_in_codex(app: AppHandle) -> Result<String, ClientError> {
             )
         })?;
     Ok(uri.to_string())
+}
+
+/// Официальная страница загрузки приложения Codex (на Windows ведёт в Microsoft Store).
+const CODEX_DOWNLOAD_URL: &str = if cfg!(target_os = "windows") {
+    "https://developers.openai.com/codex/app/windows"
+} else {
+    "https://developers.openai.com/codex/app"
+};
+
+#[tauri::command]
+fn open_codex_download(app: AppHandle) -> Result<(), ClientError> {
+    app.opener()
+        .open_url(CODEX_DOWNLOAD_URL, None::<&str>)
+        .map_err(|error| {
+            ClientError::new(
+                "browser_unavailable",
+                format!(
+                    "Не удалось открыть браузер. Откройте вручную {CODEX_DOWNLOAD_URL}: {error}"
+                ),
+            )
+        })
 }
 
 #[tauri::command]
@@ -345,6 +374,7 @@ pub fn run() {
             sync_bundle_after_update,
             remove_prepared_files,
             open_in_codex,
+            open_codex_download,
             get_claude_status,
             prepare_claude_folder,
             open_in_claude,
