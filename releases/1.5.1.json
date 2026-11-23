@@ -17,13 +17,28 @@
     "pluginPath": "./plugins/lidfly"
   },
   "publication": {
-    "status": "draft",
+    "status": "published",
     "tag": "installer-v1.5.1",
-    "commit": null,
-    "publishedAt": null
+    "commit": "a1588100f4d776d9d5c7543f627ede455bf8b166",
+    "publishedAt": "2026-11-23T04:29:38Z"
   },
   "installers": {
-    "status": "unpublished",
-    "artifacts": []
+    "status": "published",
+    "artifacts": [
+      {
+        "platform": "macos-universal",
+        "filename": "LidFly.Plugin.Lapki_1.5.1_universal.dmg",
+        "url": "https://github.com/awaik/lidfly-plugins/releases/download/installer-v1.5.1/LidFly.Plugin.Lapki_1.5.1_universal.dmg",
+        "size": 9580550,
+        "sha256": "7578dd1f161e41dbdc6b8c7db3293b5783001b72d96444d602475e4de53deca7"
+      },
+      {
+        "platform": "windows-x86_64",
+        "filename": "LidFly.Plugin.Lapki_1.5.1_x64-setup.exe",
+        "url": "https://github.com/awaik/lidfly-plugins/releases/download/installer-v1.5.1/LidFly.Plugin.Lapki_1.5.1_x64-setup.exe",
+        "size": 3033525,
+        "sha256": "846e1e5db371d870c61187d4a4fa097b07b43721d84ae0ffbcd4fabcc3f9e65c"
+      }
+    ]
   }
 }
